@@ -13,7 +13,7 @@ from core.processor import ImageProcessor
 from core.pipeline import ProcessingPipeline
 from filters import blur, edge_detection, enhance
 from utils import image_utils, color_utils, transform
-from io import image_io
+import io as custom_io
 
 
 def create_test_image(width: int = 256, height: int = 256) -> np.ndarray:

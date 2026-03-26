@@ -11,7 +11,17 @@ from core.processor import ImageProcessor
 from core.pipeline import ProcessingPipeline
 from filters import blur, edge_detection, enhance
 from utils import image_utils, color_utils
-from io.image_io import ImageLoader, ImageSaver
+
+# 使用自定义导入避免与标准库 io 冲突
+import importlib.util
+spec = importlib.util.spec_from_file_location(
+    "image_io", 
+    os.path.join(os.path.dirname(__file__), "io", "image_io.py")
+)
+image_io_module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(image_io_module)
+ImageLoader = image_io_module.ImageLoader
+ImageSaver = image_io_module.ImageSaver
 
 
 def main():

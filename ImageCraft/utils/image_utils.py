@@ -269,3 +269,13 @@ def equalize_histogram(image: np.ndarray) -> np.ndarray:
             equalized[:, :, i] = cv2.equalizeHist(image[:, :, i])
     
     return equalized
+
+
+# 模块级别函数别名
+pad_image = ImageUtils.pad_image
+tile_images = ImageUtils.tile_images
+split_channels = ImageUtils.split_channels
+merge_channels = ImageUtils.merge_channels
+resize_image = ImageUtils.resize_image
+get_image_size = ImageUtils.get_image_size
+create_blank_image = ImageUtils.create_blank_image
