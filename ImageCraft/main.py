@@ -11,7 +11,7 @@ from core.processor import ImageProcessor
 from core.pipeline import ProcessingPipeline
 from filters import blur, edge_detection, enhance
 from utils import image_utils, color_utils
-from io.image_io import ImageLoader, ImageSaver
+from io_handlers.image_io import ImageLoader, ImageSaver
 
 
 def main():
