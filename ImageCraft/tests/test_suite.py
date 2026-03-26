@@ -11,9 +11,13 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from core.processor import ImageProcessor
 from core.pipeline import ProcessingPipeline
-from filters import blur, edge_detection, enhance
-from utils import image_utils, color_utils, transform
-from io import image_io
+import filters.blur as blur
+import filters.edge as edge_detection
+import filters.enhance as enhance
+import utils.image_utils as image_utils
+import utils.color_utils as color_utils
+import utils.transform as transform
+from io_handlers.image_io import ImageLoader, ImageSaver
 
 
 def create_test_image(width: int = 256, height: int = 256) -> np.ndarray:
@@ -76,13 +80,13 @@ def test_color_conversion():
     
     test_img = create_test_image()
     
-    gray = color_utils.rgb_to_grayscale(test_img)
+    gray = color_utils.ColorConverter.rgb_to_grayscale(test_img)
     print(f"  RGB 转灰度完成：{gray.shape}")
     
-    hsv = color_utils.rgb_to_hsv(test_img)
+    hsv = color_utils.ColorConverter.rgb_to_hsv(test_img)
     print(f"  RGB 转 HSV 完成：{hsv.shape}")
     
-    lab = color_utils.rgb_to_lab(test_img)
+    lab = color_utils.ColorConverter.rgb_to_lab(test_img)
     print(f"  RGB 转 LAB 完成：{lab.shape}")
     
     print("  ✓ 颜色空间转换测试完成")
@@ -121,7 +125,7 @@ def test_utils():
     ssim = image_utils.calculate_ssim(img1, img1)
     print(f"  SSIM (相同图像): {ssim}")
     
-    resized = image_utils.resize_image(img1, 0.5)
+    resized = image_utils.ImageUtils.resize_image(img1, 0.5)
     print(f"  缩放完成：{resized.shape}")
     
     print("  ✓ 工具函数测试完成")
