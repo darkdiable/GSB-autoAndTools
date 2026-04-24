@@ -2,6 +2,9 @@ import re
 import json
 import time
 import requests
+import subprocess
+import shutil
+import os
 from bs4 import BeautifulSoup
 from typing import Dict, Optional, List, Any
 from urllib.parse import urljoin, urlparse
@@ -12,6 +15,71 @@ from .config import (
     MAX_RETRIES,
     RETRY_DELAY,
 )
+
+
+def check_ffmpeg_available() -> bool:
+    return shutil.which('ffmpeg') is not None
+
+
+def merge_video_audio(
+    video_path: str,
+    audio_path: str,
+    output_path: str,
+    keep_original: bool = True,
+) -> bool:
+    if not check_ffmpeg_available():
+        print("错误: 未找到ffmpeg，请先安装ffmpeg")
+        print("安装命令: brew install ffmpeg (macOS) 或 sudo apt install ffmpeg (Linux)")
+        return False
+    
+    if not os.path.exists(video_path):
+        print(f"错误: 视频文件不存在: {video_path}")
+        return False
+    
+    if not os.path.exists(audio_path):
+        print(f"错误: 音频文件不存在: {audio_path}")
+        return False
+    
+    print(f"\n正在合并音视频...")
+    print(f"  视频文件: {video_path}")
+    print(f"  音频文件: {audio_path}")
+    print(f"  输出文件: {output_path}")
+    
+    cmd = [
+        'ffmpeg',
+        '-i', video_path,
+        '-i', audio_path,
+        '-c', 'copy',
+        '-y',
+        output_path
+    ]
+    
+    try:
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            check=True
+        )
+        print("合并成功!")
+        
+        if not keep_original:
+            print("正在删除原始文件...")
+            try:
+                os.remove(video_path)
+                os.remove(audio_path)
+                print("原始文件已删除")
+            except OSError as e:
+                print(f"删除原始文件失败: {str(e)}")
+        
+        return True
+        
+    except subprocess.CalledProcessError as e:
+        print(f"合并失败: {e.stderr}")
+        return False
+    except Exception as e:
+        print(f"合并过程中发生错误: {str(e)}")
+        return False
 
 
 class BilibiliSpider:
@@ -281,9 +349,9 @@ class BilibiliSpider:
         save_dir: str = "./",
         quality: str = "1080p",
         download_audio: bool = True,
+        merge: bool = True,
+        keep_original: bool = True,
     ) -> Optional[Dict]:
-        import os
-        
         video_info = self.extract_video_info(bvid)
         if not video_info:
             print("无法获取视频信息")
@@ -322,6 +390,7 @@ class BilibiliSpider:
             'video_info': video_info,
             'video_file': None,
             'audio_file': None,
+            'merged_file': None,
         }
         
         if selected_video:
@@ -353,6 +422,19 @@ class BilibiliSpider:
                     
                     if self.download_file(audio_url, audio_path, headers=audio_headers):
                         result['audio_file'] = audio_path
+        
+        if merge and result['video_file'] and result['audio_file']:
+            safe_title = re.sub(r'[\\/:*?"<>|]', '_', video_info.get('title', bvid))
+            output_filename = f"{safe_title}.mp4"
+            output_path = os.path.join(save_dir, output_filename)
+            
+            if merge_video_audio(
+                result['video_file'],
+                result['audio_file'],
+                output_path,
+                keep_original
+            ):
+                result['merged_file'] = output_path
         
         return result
     
@@ -390,6 +472,8 @@ def main():
     parser.add_argument('--quality', type=str, default='1080p', choices=['2160p', '1080p60', '1080p', '720p60', '720p', '480p', '360p'], help='视频画质')
     parser.add_argument('--save-dir', type=str, default='./downloads', help='下载保存目录')
     parser.add_argument('--no-audio', action='store_true', help='不下载音频')
+    parser.add_argument('--no-merge', action='store_true', help='不自动合并音视频（默认自动合并）')
+    parser.add_argument('--delete-original', action='store_true', help='合并后删除原始音视频文件（默认保留）')
     parser.add_argument('--output', type=str, default=None, help='输出JSON文件路径')
     
     args = parser.parse_args()
@@ -397,6 +481,12 @@ def main():
     print("=" * 60)
     print("B站视频爬虫")
     print("=" * 60)
+    
+    if check_ffmpeg_available():
+        print("\n✓ ffmpeg 已安装，支持音视频自动合并")
+    else:
+        print("\n✗ ffmpeg 未安装，无法自动合并音视频")
+        print("  安装命令: brew install ffmpeg (macOS) 或 sudo apt install ffmpeg (Linux)")
     
     spider = BilibiliSpider(cookie=args.cookie)
     
@@ -409,6 +499,8 @@ def main():
             save_dir=args.save_dir,
             quality=args.quality,
             download_audio=not args.no_audio,
+            merge=not args.no_merge,
+            keep_original=not args.delete_original,
         )
     else:
         result = spider.get_structured_data(args.bvid)
