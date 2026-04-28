@@ -1,6 +1,7 @@
 import pygame
 import random
 import sys
+import os
 
 # 棋盘参数
 BOARD_COLS = 9  # 9列
@@ -15,11 +16,46 @@ COLOR_HORSE = (255, 0, 0)        # 马的颜色
 COLOR_HIGHLIGHT = (0, 255, 0)    # 高亮目标点颜色
 COLOR_RIVER = (0, 100, 255)      # 楚河汉界颜色
 COLOR_TEXT = (0, 0, 0)            # 文字颜色
+COLOR_COMPLETE_BG = (255, 255, 255)  # 完成提示背景颜色
 
 # 动画参数
 ANIMATION_DURATION = 0.3  # 动画时间（秒）
 STAY_DURATION = 0.5       # 停留时间（秒）
 FPS = 60                   # 帧率
+
+# 中文字体路径（macOS系统常用中文字体）
+CHINESE_FONT_PATHS = [
+    "/System/Library/Fonts/PingFang.ttc",
+    "/System/Library/Fonts/STHeiti Light.ttc",
+    "/System/Library/Fonts/Hiragino Sans GB.ttc",
+    "/Library/Fonts/Songti.ttc",
+]
+
+def get_chinese_font(size):
+    """获取支持中文的字体"""
+    # 尝试使用系统中文字体
+    for font_path in CHINESE_FONT_PATHS:
+        if os.path.exists(font_path):
+            try:
+                return pygame.font.Font(font_path, size)
+            except:
+                continue
+    
+    # 如果没有找到中文字体，尝试使用pygame的系统字体
+    try:
+        # 尝试使用常见的中文字体名称
+        font_names = ["PingFang SC", "Heiti SC", "STHeiti", "Microsoft YaHei", "SimHei"]
+        for font_name in font_names:
+            font = pygame.font.SysFont(font_name, size)
+            # 测试是否能渲染中文
+            test_surface = font.render("测试", True, COLOR_TEXT)
+            if test_surface.get_width() > 0:
+                return font
+    except:
+        pass
+    
+    # 最后使用默认字体
+    return pygame.font.Font(None, size)
 
 class ChessBoard:
     """棋盘绘制类"""
@@ -72,7 +108,7 @@ class ChessBoard:
         pygame.draw.rect(self.screen, COLOR_BOARD, river_rect)
         
         # 绘制楚河汉界文字
-        font = pygame.font.Font(None, 48)
+        font = get_chinese_font(48)
         text_chu = font.render("楚 河", True, COLOR_RIVER)
         text_han = font.render("汉 界", True, COLOR_RIVER)
         
@@ -268,7 +304,7 @@ class HorseDemo:
         pygame.display.flip()
         
         # 显示起点信息
-        font = pygame.font.Font(None, 36)
+        font = get_chinese_font(36)
         info_text = f"起点: ({self.start_col}, {self.start_row}), 合法走法: {len(self.valid_moves)}种"
         text_surface = font.render(info_text, True, COLOR_TEXT)
         self.screen.blit(text_surface, (10, 10))
@@ -316,24 +352,48 @@ class HorseDemo:
             self.animation.wait(0.2)
         
         # 全部演示完成，显示完成信息
+        self.show_complete_message(start_pos)
+    
+    def show_complete_message(self, start_pos):
+        """显示完成信息并等待退出"""
+        # 绘制背景
         self.board.draw()
         self.animation.draw_horse(start_pos)
         
-        # 显示完成信息
-        font_large = pygame.font.Font(None, 48)
-        complete_text = "演示完成！点击关闭按钮退出"
-        text_surface = font_large.render(complete_text, True, COLOR_TEXT)
-        text_rect = text_surface.get_rect(center=(self.board_width // 2, self.board_height // 2))
+        # 创建半透明背景层
+        overlay = pygame.Surface((self.board_width, self.board_height), pygame.SRCALPHA)
+        overlay.fill((255, 255, 255, 180))  # 半透明白色
+        self.screen.blit(overlay, (0, 0))
+        
+        # 显示完成信息 - 主标题
+        font_large = get_chinese_font(56)
+        complete_text = "演示完成！"
+        text_surface = font_large.render(complete_text, True, (255, 0, 0))
+        text_rect = text_surface.get_rect(center=(self.board_width // 2, self.board_height // 2 - 40))
         self.screen.blit(text_surface, text_rect)
+        
+        # 显示提示信息
+        font_small = get_chinese_font(32)
+        hint_text = "点击关闭按钮退出，或按任意键重新开始"
+        hint_surface = font_small.render(hint_text, True, COLOR_TEXT)
+        hint_rect = hint_surface.get_rect(center=(self.board_width // 2, self.board_height // 2 + 40))
+        self.screen.blit(hint_surface, hint_rect)
         
         pygame.display.flip()
         
-        # 等待用户关闭窗口
+        # 等待用户操作 - 支持关闭窗口或按任意键
         while True:
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     pygame.quit()
                     sys.exit()
+                elif event.type == pygame.KEYDOWN:
+                    # 按任意键重新开始
+                    pygame.quit()
+                    # 创建新的演示实例
+                    new_demo = HorseDemo()
+                    new_demo.run()
+                    return
             self.animation.clock.tick(FPS)
 
 def main():
