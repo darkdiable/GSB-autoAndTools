@@ -17,11 +17,15 @@ COLOR_HIGHLIGHT = (0, 255, 0)    # 高亮目标点颜色
 COLOR_RIVER = (0, 100, 255)      # 楚河汉界颜色
 COLOR_TEXT = (0, 0, 0)            # 文字颜色
 COLOR_COMPLETE_BG = (255, 255, 255)  # 完成提示背景颜色
+COLOR_BUTTON = (100, 150, 255)   # 按钮颜色
+COLOR_BUTTON_HOVER = (150, 200, 255)  # 按钮悬停颜色
+COLOR_BUTTON_TEXT = (255, 255, 255)   # 按钮文字颜色
 
 # 动画参数
 ANIMATION_DURATION = 0.3  # 动画时间（秒）
 STAY_DURATION = 0.5       # 停留时间（秒）
 FPS = 60                   # 帧率
+MAX_MOVES = 50             # 最大移动步数，避免无限循环
 
 # 中文字体路径（macOS系统常用中文字体）
 CHINESE_FONT_PATHS = [
@@ -205,6 +209,12 @@ class AnimationController:
         """绘制马棋子"""
         pygame.draw.circle(self.screen, color, pos, self.horse_radius)
         pygame.draw.circle(self.screen, COLOR_LINE, pos, self.horse_radius, 2)
+        
+        # 绘制"马"字
+        font = get_chinese_font(36)
+        text = font.render("马", True, COLOR_LINE)
+        text_rect = text.get_rect(center=pos)
+        self.screen.blit(text, text_rect)
     
     def draw_highlight(self, pos):
         """绘制高亮目标点"""
@@ -283,6 +293,13 @@ class HorseDemo:
         self.start_col = random.randint(0, BOARD_COLS - 1)
         self.start_row = random.randint(0, BOARD_ROWS - 1)
         
+        # 当前位置（用于连续移动）
+        self.current_col = self.start_col
+        self.current_row = self.start_row
+        
+        # 记录走过的日字总数
+        self.move_count = 0
+        
         # 棋盘上的棋子（只有马本身）
         self.pieces = {(self.start_col, self.start_row): 'horse'}
         
@@ -292,20 +309,20 @@ class HorseDemo:
         )
         
         print(f"随机起点: ({self.start_col}, {self.start_row})")
-        print(f"合法走法数量: {len(self.valid_moves)}")
-        print(f"合法走法: {self.valid_moves}")
+        print(f"初始合法走法数量: {len(self.valid_moves)}")
+        print(f"初始合法走法: {self.valid_moves}")
     
     def run(self):
         """运行演示"""
         # 绘制初始状态
         self.board.draw()
-        start_pos = self.board.get_board_position(self.start_col, self.start_row)
-        self.animation.draw_horse(start_pos)
+        current_pos = self.board.get_board_position(self.current_col, self.current_row)
+        self.animation.draw_horse(current_pos)
         pygame.display.flip()
         
         # 显示起点信息
         font = get_chinese_font(36)
-        info_text = f"起点: ({self.start_col}, {self.start_row}), 合法走法: {len(self.valid_moves)}种"
+        info_text = f"起点: ({self.start_col}, {self.start_row}), 初始合法走法: {len(self.valid_moves)}种"
         text_surface = font.render(info_text, True, COLOR_TEXT)
         self.screen.blit(text_surface, (10, 10))
         pygame.display.flip()
@@ -313,25 +330,40 @@ class HorseDemo:
         # 等待2秒让用户看清起点
         self.animation.wait(2)
         
-        # 依次演示每个合法走法
-        for i, (target_col, target_row) in enumerate(self.valid_moves):
+        # 记录已访问的位置，避免无限循环
+        visited_positions = set()
+        visited_positions.add((self.current_col, self.current_row))
+        
+        # 连续移动，不返回起点
+        while self.valid_moves and self.move_count < MAX_MOVES:
             # 处理事件
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     pygame.quit()
                     sys.exit()
             
+            # 优先选择未访问过的位置，如果没有则选择任意一个
+            target_col, target_row = None, None
+            for move in self.valid_moves:
+                if move not in visited_positions:
+                    target_col, target_row = move
+                    break
+            
+            # 如果所有合法走法都已访问过，则选择第一个
+            if target_col is None:
+                target_col, target_row = self.valid_moves[0]
+            
             # 获取位置
-            start_pos = self.board.get_board_position(self.start_col, self.start_row)
+            current_pos = self.board.get_board_position(self.current_col, self.current_row)
             target_pos = self.board.get_board_position(target_col, target_row)
             
             # 绘制高亮目标点
             self.board.draw()
-            self.animation.draw_horse(start_pos)
+            self.animation.draw_horse(current_pos)
             self.animation.draw_highlight(target_pos)
             
             # 显示当前走法信息
-            move_text = f"走法 {i+1}/{len(self.valid_moves)}: ({self.start_col},{self.start_row}) -> ({target_col},{target_row})"
+            move_text = f"第 {self.move_count + 1} 步: ({self.current_col},{self.current_row}) -> ({target_col},{target_row})"
             text_surface = font.render(move_text, True, COLOR_TEXT)
             self.screen.blit(text_surface, (10, 10))
             pygame.display.flip()
@@ -340,25 +372,39 @@ class HorseDemo:
             self.animation.wait(0.5)
             
             # 平滑移动到目标点
-            self.animation.smooth_move(start_pos, target_pos, ANIMATION_DURATION)
+            self.animation.smooth_move(current_pos, target_pos, ANIMATION_DURATION)
             
             # 停留一段时间
             self.animation.wait(STAY_DURATION)
             
-            # 平滑移回起点
-            self.animation.smooth_move(target_pos, start_pos, ANIMATION_DURATION)
+            # 更新当前位置
+            self.current_col = target_col
+            self.current_row = target_row
             
-            # 短暂停留
-            self.animation.wait(0.2)
+            # 增加移动计数
+            self.move_count += 1
+            
+            # 记录已访问的位置
+            visited_positions.add((self.current_col, self.current_row))
+            
+            # 更新棋子位置
+            self.pieces = {(self.current_col, self.current_row): 'horse'}
+            
+            # 计算新的合法走法
+            self.valid_moves = HorseMoveCalculator.get_valid_moves(
+                self.current_col, self.current_row, self.pieces
+            )
+            
+            print(f"第 {self.move_count} 步后位置: ({self.current_col}, {self.current_row}), 剩余合法走法: {len(self.valid_moves)}")
         
         # 全部演示完成，显示完成信息
-        self.show_complete_message(start_pos)
+        self.show_complete_message(current_pos)
     
-    def show_complete_message(self, start_pos):
+    def show_complete_message(self, final_pos):
         """显示完成信息并等待退出"""
         # 绘制背景
         self.board.draw()
-        self.animation.draw_horse(start_pos)
+        self.animation.draw_horse(final_pos)
         
         # 创建半透明背景层
         overlay = pygame.Surface((self.board_width, self.board_height), pygame.SRCALPHA)
@@ -369,31 +415,87 @@ class HorseDemo:
         font_large = get_chinese_font(56)
         complete_text = "演示完成！"
         text_surface = font_large.render(complete_text, True, (255, 0, 0))
-        text_rect = text_surface.get_rect(center=(self.board_width // 2, self.board_height // 2 - 40))
+        text_rect = text_surface.get_rect(center=(self.board_width // 2, self.board_height // 2 - 100))
         self.screen.blit(text_surface, text_rect)
         
-        # 显示提示信息
-        font_small = get_chinese_font(32)
-        hint_text = "点击关闭按钮退出，或按任意键重新开始"
-        hint_surface = font_small.render(hint_text, True, COLOR_TEXT)
-        hint_rect = hint_surface.get_rect(center=(self.board_width // 2, self.board_height // 2 + 40))
-        self.screen.blit(hint_surface, hint_rect)
+        # 显示走过的日字总数
+        font_medium = get_chinese_font(40)
+        count_text = f"共走过 {self.move_count} 个日字"
+        count_surface = font_medium.render(count_text, True, COLOR_TEXT)
+        count_rect = count_surface.get_rect(center=(self.board_width // 2, self.board_height // 2 - 40))
+        self.screen.blit(count_surface, count_rect)
         
-        pygame.display.flip()
+        # 按钮尺寸
+        button_width = 150
+        button_height = 50
+        button_y = self.board_height // 2 + 40
         
-        # 等待用户操作 - 支持关闭窗口或按任意键
+        # 退出按钮
+        exit_button_rect = pygame.Rect(
+            self.board_width // 2 - button_width - 30,
+            button_y,
+            button_width,
+            button_height
+        )
+        
+        # 重新开始按钮
+        restart_button_rect = pygame.Rect(
+            self.board_width // 2 + 30,
+            button_y,
+            button_width,
+            button_height
+        )
+        
+        # 按钮文字
+        font_button = get_chinese_font(28)
+        exit_text = font_button.render("退出", True, COLOR_BUTTON_TEXT)
+        restart_text = font_button.render("重新开始", True, COLOR_BUTTON_TEXT)
+        
+        # 等待用户操作
         while True:
+            # 处理事件
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     pygame.quit()
                     sys.exit()
-                elif event.type == pygame.KEYDOWN:
-                    # 按任意键重新开始
-                    pygame.quit()
-                    # 创建新的演示实例
-                    new_demo = HorseDemo()
-                    new_demo.run()
-                    return
+                elif event.type == pygame.MOUSEBUTTONDOWN:
+                    # 检查是否点击了按钮
+                    if exit_button_rect.collidepoint(event.pos):
+                        # 退出
+                        pygame.quit()
+                        sys.exit()
+                    elif restart_button_rect.collidepoint(event.pos):
+                        # 重新开始
+                        pygame.quit()
+                        new_demo = HorseDemo()
+                        new_demo.run()
+                        return
+            
+            # 获取鼠标位置
+            mouse_pos = pygame.mouse.get_pos()
+            
+            # 绘制退出按钮
+            if exit_button_rect.collidepoint(mouse_pos):
+                pygame.draw.rect(self.screen, COLOR_BUTTON_HOVER, exit_button_rect)
+            else:
+                pygame.draw.rect(self.screen, COLOR_BUTTON, exit_button_rect)
+            pygame.draw.rect(self.screen, COLOR_LINE, exit_button_rect, 2)
+            
+            # 绘制重新开始按钮
+            if restart_button_rect.collidepoint(mouse_pos):
+                pygame.draw.rect(self.screen, COLOR_BUTTON_HOVER, restart_button_rect)
+            else:
+                pygame.draw.rect(self.screen, COLOR_BUTTON, restart_button_rect)
+            pygame.draw.rect(self.screen, COLOR_LINE, restart_button_rect, 2)
+            
+            # 绘制按钮文字
+            exit_text_rect = exit_text.get_rect(center=exit_button_rect.center)
+            self.screen.blit(exit_text, exit_text_rect)
+            
+            restart_text_rect = restart_text.get_rect(center=restart_button_rect.center)
+            self.screen.blit(restart_text, restart_text_rect)
+            
+            pygame.display.flip()
             self.animation.clock.tick(FPS)
 
 def main():
