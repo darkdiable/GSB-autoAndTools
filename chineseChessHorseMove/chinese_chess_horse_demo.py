@@ -25,7 +25,7 @@ COLOR_BUTTON_TEXT = (255, 255, 255)   # 按钮文字颜色
 ANIMATION_DURATION = 0.3  # 动画时间（秒）
 STAY_DURATION = 0.5       # 停留时间（秒）
 FPS = 60                   # 帧率
-MAX_MOVES = 50             # 最大移动步数，避免无限循环
+MAX_MOVES = BOARD_COLS * BOARD_ROWS  # 最大移动步数为棋盘总位置数
 
 # 中文字体路径（macOS系统常用中文字体）
 CHINESE_FONT_PATHS = [
@@ -342,16 +342,17 @@ class HorseDemo:
                     pygame.quit()
                     sys.exit()
             
-            # 优先选择未访问过的位置，如果没有则选择任意一个
+            # 优先选择未访问过的位置
             target_col, target_row = None, None
             for move in self.valid_moves:
                 if move not in visited_positions:
                     target_col, target_row = move
                     break
             
-            # 如果所有合法走法都已访问过，则选择第一个
+            # 如果所有合法走法都已访问过，则结束演示
             if target_col is None:
-                target_col, target_row = self.valid_moves[0]
+                print(f"所有合法走法都已访问过，结束演示。已访问 {len(visited_positions)} 个位置")
+                break
             
             # 获取位置
             current_pos = self.board.get_board_position(self.current_col, self.current_row)
