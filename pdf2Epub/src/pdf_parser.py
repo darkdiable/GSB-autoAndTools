@@ -140,6 +140,20 @@ class PdfParser:
         total_pages = self.get_total_pages()
         image_counter = 0
         
+        try:
+            fitz_images = self._extract_images_with_fitz()
+            if fitz_images:
+                for img in fitz_images:
+                    page_idx = img.page_idx
+                    if page_idx not in self._images_by_page:
+                        self._images_by_page[page_idx] = []
+                    self._images_by_page[page_idx].append(img)
+                    self._images.append(img)
+                print(f"  使用 PyMuPDF 提取了 {len(self._images)} 张图片")
+                return self._images
+        except Exception as e:
+            print(f"  PyMuPDF 提取图片失败，使用备用方法: {e}")
+        
         for page_idx in range(total_pages):
             page_images = self._extract_page_images(page_idx, image_counter)
             if page_images:
@@ -148,6 +162,75 @@ class PdfParser:
                 image_counter += len(page_images)
         
         return self._images
+
+    def _extract_images_with_fitz(self) -> List[PdfImage]:
+        import fitz
+        
+        fitz_doc = fitz.open(self.pdf_path)
+        images = []
+        
+        for page_idx in range(len(fitz_doc)):
+            page = fitz_doc[page_idx]
+            page_height = page.rect.height
+            
+            image_list = page.get_images(full=True)
+            
+            for i, img in enumerate(image_list):
+                try:
+                    xref = img[0]
+                    base_image = fitz_doc.extract_image(xref)
+                    image_data = base_image["image"]
+                    img_format = base_image["ext"]
+                    
+                    pil_img = Image.open(io.BytesIO(image_data))
+                    pil_img.load()
+                    width, height = pil_img.size
+                    
+                    if pil_img.mode not in ('RGB', 'L'):
+                        if pil_img.mode in ('RGBA', 'LA', 'P'):
+                            background = Image.new('RGB', pil_img.size, (255, 255, 255))
+                            if pil_img.mode == 'P':
+                                pil_img = pil_img.convert('RGBA')
+                            if pil_img.mode in ('RGBA', 'LA'):
+                                mask = pil_img.split()[-1]
+                                background.paste(pil_img, mask=mask)
+                            else:
+                                background.paste(pil_img)
+                            pil_img = background
+                        else:
+                            pil_img = pil_img.convert('RGB')
+                    
+                    output = io.BytesIO()
+                    pil_img.save(output, format='JPEG', quality=95)
+                    image_data = output.getvalue()
+                    img_format = 'jpeg'
+                    
+                    rect = page.get_image_rects(xref)
+                    x0, y0, x1, y1 = 0, 0, 0, 0
+                    if rect and len(rect) > 0:
+                        r = rect[0]
+                        x0, y0, x1, y1 = r.x0, r.y0, r.x1, r.y1
+                    
+                    pdf_image = PdfImage(
+                        image_id=f'image_{page_idx + 1}_{len(images) + 1}',
+                        page_idx=page_idx,
+                        data=image_data,
+                        format=img_format,
+                        width=width,
+                        height=height,
+                        x0=x0,
+                        y0=y0,
+                        x1=x1,
+                        y1=y1,
+                        page_height=page_height
+                    )
+                    images.append(pdf_image)
+                except Exception as e:
+                    print(f"  Fitz 提取第 {page_idx + 1} 页第 {i + 1} 张图片失败: {e}")
+                    continue
+        
+        fitz_doc.close()
+        return images
 
     def _extract_page_images(self, page_idx: int, start_image_id: int) -> List[PdfImage]:
         images = []
@@ -176,9 +259,8 @@ class PdfParser:
                         x1 = float(img.get('x1', 0))
                         y1 = float(img.get('y1', 0))
                         
-                        valid_data, valid_format = self._validate_and_convert_image(image_data, img_format)
-                        if valid_data is None:
-                            print(f"  警告: 第 {page_idx + 1} 页的图片无法解码，已跳过")
+                        valid_data, valid_format = self._validate_and_convert_image(image_data, img_format, page_idx, i)
+                        if valid_data is None or len(valid_data) == 0:
                             continue
                         
                         if width == 0 or height == 0:
@@ -203,10 +285,9 @@ class PdfParser:
                         )
                         images.append(pdf_image)
                     except Exception as e:
-                        print(f"  提取第 {page_idx + 1} 页图片时出错: {e}")
                         continue
         except Exception as e:
-            print(f"  处理第 {page_idx + 1} 页图片时出错: {e}")
+            pass
         
         if self.pdf_reader:
             try:
@@ -217,25 +298,16 @@ class PdfParser:
                         obj = xObject[obj_key].get_object()
                         if obj.get('/Subtype') == '/Image':
                             try:
-                                image_data = obj.get_data()
-                                img_format = 'jpeg'
-                                filter_type = obj.get('/Filter')
-                                if filter_type == '/FlateDecode':
-                                    img_format = 'png'
-                                elif filter_type == '/DCTDecode':
-                                    img_format = 'jpeg'
-                                elif filter_type == '/JPXDecode':
-                                    img_format = 'jpeg2000'
-                                elif filter_type == '/CCITTFaxDecode':
-                                    img_format = 'tiff'
+                                image_data = self._extract_image_data_with_fallback(obj, page_idx, len(images))
+                                if image_data is None:
+                                    continue
+                                
+                                valid_data, valid_format = self._validate_and_convert_image(image_data, 'jpeg', page_idx, len(images))
+                                if valid_data is None or len(valid_data) == 0:
+                                    continue
                                 
                                 width = obj.get('/Width', 0)
                                 height = obj.get('/Height', 0)
-                                
-                                valid_data, valid_format = self._validate_and_convert_image(image_data, img_format)
-                                if valid_data is None:
-                                    continue
-                                
                                 if width == 0 or height == 0:
                                     try:
                                         with Image.open(io.BytesIO(valid_data)) as pil_img:
@@ -273,52 +345,269 @@ class PdfParser:
         
         return images
 
-    def _validate_and_convert_image(self, image_data: bytes, original_format: str) -> Tuple[Optional[bytes], str]:
+    def _extract_image_data_with_fallback(self, obj, page_idx: int, img_idx: int) -> Optional[bytes]:
+        try:
+            raw_data = obj.get_data()
+            
+            filter_type = obj.get('/Filter')
+            if isinstance(filter_type, list):
+                try:
+                    return self._handle_multi_filter(obj, page_idx, img_idx, raw_data)
+                except:
+                    pass
+            
+            if filter_type == '/FlateDecode':
+                try:
+                    width = obj.get('/Width', 0)
+                    height = obj.get('/Height', 0)
+                    bits_per_component = obj.get('/BitsPerComponent', 8)
+                    color_space = obj.get('/ColorSpace')
+                    
+                    if width > 0 and height > 0:
+                        mode = 'RGB'
+                        if color_space == '/DeviceGray':
+                            mode = 'L'
+                        elif color_space == '/DeviceRGB':
+                            mode = 'RGB'
+                        elif color_space == '/DeviceCMYK':
+                            mode = 'CMYK'
+                        elif isinstance(color_space, list):
+                            if color_space[0] == '/ICCBased':
+                                mode = 'RGB'
+                            elif color_space[0] == '/DeviceN':
+                                mode = 'RGB'
+                        
+                        stride = 0
+                        if mode == 'L':
+                            stride = width
+                        elif mode == 'RGB':
+                            stride = width * 3
+                        elif mode == 'CMYK':
+                            stride = width * 4
+                        
+                        img = Image.frombytes(mode, (width, height), raw_data, 'raw', mode, stride)
+                        if mode == 'CMYK':
+                            img = img.convert('RGB')
+                        output = io.BytesIO()
+                        img.save(output, format='JPEG', quality=95)
+                        return output.getvalue()
+                except Exception as e:
+                    pass
+            
+            if filter_type == '/CCITTFaxDecode':
+                try:
+                    width = obj.get('/Width', 0)
+                    height = obj.get('/Height', 0)
+                    if width > 0 and height > 0:
+                        img = Image.frombytes('1', (width, height), raw_data, 'raw', '1;I')
+                        img = img.convert('RGB')
+                        output = io.BytesIO()
+                        img.save(output, format='JPEG', quality=95)
+                        return output.getvalue()
+                except Exception as e:
+                    pass
+            
+            if filter_type == '/DCTDecode':
+                try:
+                    img = Image.open(io.BytesIO(raw_data))
+                    img.load()
+                    output = io.BytesIO()
+                    if img.mode not in ('RGB', 'L'):
+                        img = img.convert('RGB')
+                    img.save(output, format='JPEG', quality=95)
+                    return output.getvalue()
+                except:
+                    pass
+            
+            return raw_data
+            
+        except Exception as e:
+            print(f"  [图片提取失败] 第 {page_idx + 1} 页第 {img_idx + 1} 张图片: {str(e)}")
+            return None
+
+    def _handle_multi_filter(self, obj, page_idx: int, img_idx: int, raw_data: bytes) -> Optional[bytes]:
+        import zlib
+        
+        width = obj.get('/Width', 0)
+        height = obj.get('/Height', 0)
+        
+        if width == 0 or height == 0:
+            return None
+        
+        try:
+            decompressed = zlib.decompress(raw_data)
+            img = Image.frombytes('RGB', (width, height), decompressed)
+            output = io.BytesIO()
+            img.save(output, format='JPEG', quality=95)
+            return output.getvalue()
+        except:
+            return None
+
+    def _validate_and_convert_image(self, image_data: bytes, original_format: str, page_idx: int, img_idx: int) -> Tuple[Optional[bytes], str]:
         if not image_data or len(image_data) < 10:
-            return None, original_format
+            print(f"  [图片异常] 第 {page_idx + 1} 页第 {img_idx + 1} 张图片: 数据为空或过小 ({len(image_data)} bytes)")
+            return self._create_placeholder_image(f"第{page_idx + 1}页_图{img_idx + 1}"), 'jpeg'
+        
+        img_info = f"第 {page_idx + 1} 页第 {img_idx + 1} 张图片 (原始格式: {original_format}, 大小: {len(image_data)} bytes)"
+        
+        fixed_data = self._try_fix_image_data(image_data, original_format)
+        if fixed_data is not None:
+            if self._validate_image_data(fixed_data, 'jpeg'):
+                return fixed_data, 'jpeg'
         
         try:
             img = Image.open(io.BytesIO(image_data))
             img.load()
             
-            if img.format and img.format.lower() in ['jpeg', 'png', 'gif']:
-                if img.mode in ('RGB', 'L'):
-                    return image_data, img.format.lower()
+            img_size = img.size
+            img_mode = img.mode
+            img_format = img.format
+            
+            if img_format and img_format.lower() in ['jpeg', 'png', 'gif'] and img_mode in ('RGB', 'L'):
+                if self._validate_image_data(image_data, img_format.lower()):
+                    return image_data, img_format.lower()
             
             output = io.BytesIO()
+            img = Image.open(io.BytesIO(image_data))
             
-            if img.mode in ('RGBA', 'LA', 'P'):
+            if img.mode in ('RGBA', 'LA', 'P', 'PA'):
                 background = Image.new('RGB', img.size, (255, 255, 255))
-                if img.mode == 'P':
+                if img.mode in ('P', 'PA'):
                     img = img.convert('RGBA')
-                background.paste(img, mask=img.split()[-1] if img.mode in ('RGBA', 'LA') else None)
+                if img.mode in ('RGBA', 'LA'):
+                    mask = img.split()[-1]
+                    background.paste(img, mask=mask)
+                else:
+                    background.paste(img)
                 img = background
             elif img.mode not in ('RGB', 'L'):
                 img = img.convert('RGB')
             
-            img.save(output, format='JPEG', quality=95)
-            return output.getvalue(), 'jpeg'
+            img.save(output, format='JPEG', quality=95, optimize=True)
+            converted_data = output.getvalue()
+            
+            if self._validate_image_data(converted_data, 'jpeg'):
+                return converted_data, 'jpeg'
+            else:
+                print(f"  [图片转换失败] {img_info}: 转换后验证不通过，使用占位图")
+                return self._create_placeholder_image(f"第{page_idx + 1}页_图{img_idx + 1}"), 'jpeg'
                 
         except Exception as e:
+            print(f"  [图片异常] {img_info}: {str(e)}，使用占位图")
+            return self._create_placeholder_image(f"第{page_idx + 1}页_图{img_idx + 1}"), 'jpeg'
+
+    def _try_fix_image_data(self, image_data: bytes, original_format: str) -> Optional[bytes]:
+        try:
+            if len(image_data) > 100:
+                header = image_data[:10]
+                
+                if original_format == 'jpeg' or original_format == 'dct':
+                    if not (header.startswith(b'\xff\xd8') and header.endswith(b'\xff\xd9')):
+                        pass
+                
+                if original_format == 'png':
+                    if header.startswith(b'\x89PNG'):
+                        try:
+                            img = Image.open(io.BytesIO(image_data))
+                            img.load()
+                            output = io.BytesIO()
+                            if img.mode not in ('RGB', 'L'):
+                                if img.mode in ('RGBA', 'LA', 'P'):
+                                    background = Image.new('RGB', img.size, (255, 255, 255))
+                                    if img.mode == 'P':
+                                        img = img.convert('RGBA')
+                                    if img.mode in ('RGBA', 'LA'):
+                                        mask = img.split()[-1]
+                                        background.paste(img, mask=mask)
+                                    else:
+                                        background.paste(img)
+                                    img = background
+                                else:
+                                    img = img.convert('RGB')
+                            img.save(output, format='JPEG', quality=95)
+                            return output.getvalue()
+                        except:
+                            pass
+            
+            if original_format in ['jpeg', 'jpg', 'dct', 'jpeg2000', 'jp2']:
+                if image_data.startswith(b'\xff\xd8\xff'):
+                    try:
+                        img = Image.open(io.BytesIO(image_data))
+                        img.load()
+                        output = io.BytesIO()
+                        if img.mode not in ('RGB', 'L'):
+                            img = img.convert('RGB')
+                        img.save(output, format='JPEG', quality=95)
+                        return output.getvalue()
+                    except:
+                        pass
+            
+            return None
+        except:
+            return None
+
+    def _validate_image_data(self, image_data: bytes, img_format: str) -> bool:
+        try:
+            img = Image.open(io.BytesIO(image_data))
+            img.load()
+            
+            if img_format == 'jpeg' and img.format not in ('JPEG', 'JPG'):
+                return False
+            if img_format == 'png' and img.format != 'PNG':
+                return False
+            if img_format == 'gif' and img.format != 'GIF':
+                return False
+            
+            if img.size[0] <= 0 or img.size[1] <= 0:
+                return False
+            
+            if len(image_data) < 100:
+                return False
+            
+            return True
+        except Exception:
+            return False
+
+    def _create_placeholder_image(self, label: str = 'Image') -> bytes:
+        try:
+            output = io.BytesIO()
+            img = Image.new('RGB', (400, 300), color='#f5f5f5')
+            from PIL import ImageDraw, ImageFont
+            draw = ImageDraw.Draw(img)
+            
+            draw.rectangle([10, 10, 390, 290], outline='#cccccc', width=2)
+            draw.rectangle([20, 20, 380, 280], outline='#dddddd', width=1)
+            
+            icon_size = 80
+            icon_x = (400 - icon_size) // 2
+            icon_y = 80
+            draw.rectangle([icon_x, icon_y, icon_x + icon_size, icon_y + icon_size], outline='#999999', width=2)
+            draw.line([icon_x + 10, icon_y + icon_size - 10, icon_x + 30, icon_y + icon_size - 30], fill='#999999', width=2)
+            draw.line([icon_x + 30, icon_y + icon_size - 30, icon_x + 50, icon_y + icon_size - 50], fill='#999999', width=2)
+            draw.line([icon_x + 50, icon_y + icon_size - 50, icon_x + 70, icon_y + icon_size - 20], fill='#999999', width=2)
+            draw.ellipse([icon_x + 50, icon_y + 20, icon_x + 70, icon_y + 40], outline='#999999', width=2)
+            
             try:
-                output = io.BytesIO()
-                img = Image.new('RGB', (200, 200), color='#f0f0f0')
-                from PIL import ImageDraw, ImageFont
-                draw = ImageDraw.Draw(img)
-                draw.rectangle([0, 0, 199, 199], outline='#999999', width=2)
-                try:
-                    font = ImageFont.truetype('/Library/Fonts/Arial.ttf', 16)
-                except:
-                    font = ImageFont.load_default()
-                text = 'Image'
-                bbox = draw.textbbox((0, 0), text, font=font)
-                text_width = bbox[2] - bbox[0]
-                text_height = bbox[3] - bbox[1]
-                draw.text(((200 - text_width) / 2, (200 - text_height) / 2), text, fill='#666666', font=font)
-                img.save(output, format='JPEG', quality=95)
-                return output.getvalue(), 'jpeg'
+                font = ImageFont.truetype('/Library/Fonts/Arial.ttf', 18)
+                small_font = ImageFont.truetype('/Library/Fonts/Arial.ttf', 12)
             except:
-                return None, original_format
+                font = ImageFont.load_default()
+                small_font = ImageFont.load_default()
+            
+            text = '图片加载失败'
+            bbox = draw.textbbox((0, 0), text, font=font)
+            text_width = bbox[2] - bbox[0]
+            draw.text(((400 - text_width) / 2, 180), text, fill='#666666', font=font)
+            
+            label_bbox = draw.textbbox((0, 0), label, font=small_font)
+            label_width = label_bbox[2] - label_bbox[0]
+            draw.text(((400 - label_width) / 2, 220), label, fill='#999999', font=small_font)
+            
+            img.save(output, format='JPEG', quality=85, optimize=True)
+            return output.getvalue()
+        except Exception as e:
+            print(f"  [占位图生成失败]: {str(e)}")
+            return b''
 
     def extract_text_blocks(self, start_page: int = 0, end_page: Optional[int] = None) -> List[TextBlock]:
         if end_page is None:

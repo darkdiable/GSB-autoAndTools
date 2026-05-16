@@ -196,8 +196,25 @@ class EpubGenerator:
         return all_images
 
     def _add_images_to_book(self, book, images: List[PdfImage]):
+        import io
+        from PIL import Image
+        
         for img in images:
             try:
+                if not img.data or len(img.data) < 10:
+                    print(f"  [EPUB图片异常] {img.image_id}: 图片数据为空或过小 ({len(img.data) if img.data else 0} bytes)，已跳过")
+                    continue
+                
+                try:
+                    pil_img = Image.open(io.BytesIO(img.data))
+                    pil_img.load()
+                    if pil_img.size[0] <= 0 or pil_img.size[1] <= 0:
+                        print(f"  [EPUB图片异常] {img.image_id}: 图片尺寸无效 ({pil_img.size})，已跳过")
+                        continue
+                except Exception as e:
+                    print(f"  [EPUB图片异常] {img.image_id}: 无法解码 - {str(e)}，已跳过")
+                    continue
+                
                 img_ext = self._get_image_extension(img.format)
                 media_type = self._get_media_type(img.format)
                 
@@ -209,7 +226,7 @@ class EpubGenerator:
                 )
                 book.add_item(epub_image)
             except Exception as e:
-                print(f"  添加图片 {img.image_id} 时出错: {e}")
+                print(f"  [EPUB图片异常] 添加图片 {img.image_id} 时出错: {str(e)}")
 
     def _get_image_extension(self, img_format: str) -> str:
         format_lower = img_format.lower()
