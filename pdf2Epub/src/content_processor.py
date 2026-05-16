@@ -260,12 +260,10 @@ class ContentProcessor:
 
     def _get_image_extension(self, img_format: str) -> str:
         format_lower = img_format.lower()
-        if format_lower in ['jpeg', 'jpg', 'dct']:
+        if format_lower in ['jpeg', 'jpg', 'dct', 'jpeg2000', 'jp2', 'tif', 'tiff', 'bmp', 'gif']:
             return 'jpg'
         elif format_lower == 'png':
             return 'png'
-        elif format_lower in ['gif', 'jpeg2000', 'jp2', 'tif', 'tiff', 'bmp']:
-            return format_lower
         return 'jpg'
 
     def _is_heading(self, line: str) -> bool:

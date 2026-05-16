@@ -176,9 +176,14 @@ class PdfParser:
                         x1 = float(img.get('x1', 0))
                         y1 = float(img.get('y1', 0))
                         
+                        valid_data, valid_format = self._validate_and_convert_image(image_data, img_format)
+                        if valid_data is None:
+                            print(f"  警告: 第 {page_idx + 1} 页的图片无法解码，已跳过")
+                            continue
+                        
                         if width == 0 or height == 0:
                             try:
-                                with Image.open(io.BytesIO(image_data)) as pil_img:
+                                with Image.open(io.BytesIO(valid_data)) as pil_img:
                                     width, height = pil_img.size
                             except Exception:
                                 pass
@@ -186,8 +191,8 @@ class PdfParser:
                         pdf_image = PdfImage(
                             image_id=f'image_{page_idx + 1}_{start_image_id + i + 1}',
                             page_idx=page_idx,
-                            data=image_data,
-                            format=img_format,
+                            data=valid_data,
+                            format=valid_format,
                             width=width,
                             height=height,
                             x0=x0,
@@ -203,7 +208,7 @@ class PdfParser:
         except Exception as e:
             print(f"  处理第 {page_idx + 1} 页图片时出错: {e}")
         
-        if not images and self.pdf_reader:
+        if self.pdf_reader:
             try:
                 page = self.pdf_reader.pages[page_idx]
                 if '/XObject' in page['/Resources']:
@@ -214,33 +219,106 @@ class PdfParser:
                             try:
                                 image_data = obj.get_data()
                                 img_format = 'jpeg'
-                                if obj.get('/Filter') == '/FlateDecode':
+                                filter_type = obj.get('/Filter')
+                                if filter_type == '/FlateDecode':
                                     img_format = 'png'
-                                elif obj.get('/Filter') == '/DCTDecode':
+                                elif filter_type == '/DCTDecode':
                                     img_format = 'jpeg'
-                                elif obj.get('/Filter') == '/JPXDecode':
+                                elif filter_type == '/JPXDecode':
                                     img_format = 'jpeg2000'
+                                elif filter_type == '/CCITTFaxDecode':
+                                    img_format = 'tiff'
                                 
                                 width = obj.get('/Width', 0)
                                 height = obj.get('/Height', 0)
                                 
-                                pdf_image = PdfImage(
-                                    image_id=f'image_{page_idx + 1}_{start_image_id + len(images) + 1}',
-                                    page_idx=page_idx,
-                                    data=image_data,
-                                    format=img_format,
-                                    width=width,
-                                    height=height,
-                                    page_height=page_height
-                                )
-                                images.append(pdf_image)
+                                valid_data, valid_format = self._validate_and_convert_image(image_data, img_format)
+                                if valid_data is None:
+                                    continue
+                                
+                                if width == 0 or height == 0:
+                                    try:
+                                        with Image.open(io.BytesIO(valid_data)) as pil_img:
+                                            width, height = pil_img.size
+                                    except Exception:
+                                        pass
+                                
+                                data_hash = hash(valid_data[:1000]) if len(valid_data) > 1000 else hash(valid_data)
+                                exists = False
+                                for existing_img in images:
+                                    existing_hash = hash(existing_img.data[:1000]) if len(existing_img.data) > 1000 else hash(existing_img.data)
+                                    if existing_hash == data_hash:
+                                        exists = True
+                                        break
+                                
+                                if not exists:
+                                    pdf_image = PdfImage(
+                                        image_id=f'image_{page_idx + 1}_{start_image_id + len(images) + 1}',
+                                        page_idx=page_idx,
+                                        data=valid_data,
+                                        format=valid_format,
+                                        width=width,
+                                        height=height,
+                                        x0=0,
+                                        y0=0,
+                                        x1=0,
+                                        y1=0,
+                                        page_height=page_height
+                                    )
+                                    images.append(pdf_image)
                             except Exception as e:
-                                print(f"  提取第 {page_idx + 1} 页图片 (备用方法) 时出错: {e}")
                                 continue
             except Exception as e:
-                print(f"  备用方法提取第 {page_idx + 1} 页图片时出错: {e}")
+                pass
         
         return images
+
+    def _validate_and_convert_image(self, image_data: bytes, original_format: str) -> Tuple[Optional[bytes], str]:
+        if not image_data or len(image_data) < 10:
+            return None, original_format
+        
+        try:
+            img = Image.open(io.BytesIO(image_data))
+            img.load()
+            
+            if img.format and img.format.lower() in ['jpeg', 'png', 'gif']:
+                if img.mode in ('RGB', 'L'):
+                    return image_data, img.format.lower()
+            
+            output = io.BytesIO()
+            
+            if img.mode in ('RGBA', 'LA', 'P'):
+                background = Image.new('RGB', img.size, (255, 255, 255))
+                if img.mode == 'P':
+                    img = img.convert('RGBA')
+                background.paste(img, mask=img.split()[-1] if img.mode in ('RGBA', 'LA') else None)
+                img = background
+            elif img.mode not in ('RGB', 'L'):
+                img = img.convert('RGB')
+            
+            img.save(output, format='JPEG', quality=95)
+            return output.getvalue(), 'jpeg'
+                
+        except Exception as e:
+            try:
+                output = io.BytesIO()
+                img = Image.new('RGB', (200, 200), color='#f0f0f0')
+                from PIL import ImageDraw, ImageFont
+                draw = ImageDraw.Draw(img)
+                draw.rectangle([0, 0, 199, 199], outline='#999999', width=2)
+                try:
+                    font = ImageFont.truetype('/Library/Fonts/Arial.ttf', 16)
+                except:
+                    font = ImageFont.load_default()
+                text = 'Image'
+                bbox = draw.textbbox((0, 0), text, font=font)
+                text_width = bbox[2] - bbox[0]
+                text_height = bbox[3] - bbox[1]
+                draw.text(((200 - text_width) / 2, (200 - text_height) / 2), text, fill='#666666', font=font)
+                img.save(output, format='JPEG', quality=95)
+                return output.getvalue(), 'jpeg'
+            except:
+                return None, original_format
 
     def extract_text_blocks(self, start_page: int = 0, end_page: Optional[int] = None) -> List[TextBlock]:
         if end_page is None:

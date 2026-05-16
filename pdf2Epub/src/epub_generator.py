@@ -213,32 +213,16 @@ class EpubGenerator:
 
     def _get_image_extension(self, img_format: str) -> str:
         format_lower = img_format.lower()
-        if format_lower in ['jpeg', 'jpg', 'dct']:
+        if format_lower in ['jpeg', 'jpg', 'dct', 'jpeg2000', 'jp2', 'tif', 'tiff', 'bmp', 'gif']:
             return 'jpg'
         elif format_lower == 'png':
             return 'png'
-        elif format_lower == 'gif':
-            return 'gif'
-        elif format_lower in ['jpeg2000', 'jp2']:
-            return 'jp2'
-        elif format_lower in ['tif', 'tiff']:
-            return 'tiff'
-        elif format_lower == 'bmp':
-            return 'bmp'
         return 'jpg'
 
     def _get_media_type(self, img_format: str) -> str:
         format_lower = img_format.lower()
-        if format_lower in ['jpeg', 'jpg', 'dct']:
+        if format_lower in ['jpeg', 'jpg', 'dct', 'jpeg2000', 'jp2', 'tif', 'tiff', 'bmp', 'gif']:
             return 'image/jpeg'
         elif format_lower == 'png':
             return 'image/png'
-        elif format_lower == 'gif':
-            return 'image/gif'
-        elif format_lower in ['jpeg2000', 'jp2']:
-            return 'image/jp2'
-        elif format_lower in ['tif', 'tiff']:
-            return 'image/tiff'
-        elif format_lower == 'bmp':
-            return 'image/bmp'
         return 'image/jpeg'
