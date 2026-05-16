@@ -1,6 +1,6 @@
 import os
 import io
-from typing import List, Optional, Tuple, Dict
+from typing import List, Optional, Tuple, Dict, Any
 from dataclasses import dataclass, field
 import PyPDF2
 import pdfplumber
@@ -15,6 +15,23 @@ class PdfImage:
     format: str
     width: int = 0
     height: int = 0
+    x0: float = 0.0
+    y0: float = 0.0
+    x1: float = 0.0
+    y1: float = 0.0
+    page_height: float = 0.0
+
+
+@dataclass
+class TextBlock:
+    text: str
+    page_idx: int
+    x0: float
+    y0: float
+    x1: float
+    y1: float
+    font_size: float = 0.0
+    is_heading: bool = False
 
 
 class PdfParser:
@@ -134,10 +151,12 @@ class PdfParser:
 
     def _extract_page_images(self, page_idx: int, start_image_id: int) -> List[PdfImage]:
         images = []
+        page_height = 0.0
         
         try:
             if self.plumber_pdf:
                 page = self.plumber_pdf.pages[page_idx]
+                page_height = float(page.height) if page.height else 0.0
                 page_imgs = page.images
                 
                 for i, img in enumerate(page_imgs):
@@ -152,6 +171,11 @@ class PdfParser:
                         width = img.get('width', 0)
                         height = img.get('height', 0)
                         
+                        x0 = float(img.get('x0', 0))
+                        y0 = float(img.get('y0', 0))
+                        x1 = float(img.get('x1', 0))
+                        y1 = float(img.get('y1', 0))
+                        
                         if width == 0 or height == 0:
                             try:
                                 with Image.open(io.BytesIO(image_data)) as pil_img:
@@ -165,7 +189,12 @@ class PdfParser:
                             data=image_data,
                             format=img_format,
                             width=width,
-                            height=height
+                            height=height,
+                            x0=x0,
+                            y0=y0,
+                            x1=x1,
+                            y1=y1,
+                            page_height=page_height
                         )
                         images.append(pdf_image)
                     except Exception as e:
@@ -201,7 +230,8 @@ class PdfParser:
                                     data=image_data,
                                     format=img_format,
                                     width=width,
-                                    height=height
+                                    height=height,
+                                    page_height=page_height
                                 )
                                 images.append(pdf_image)
                             except Exception as e:
@@ -211,6 +241,70 @@ class PdfParser:
                 print(f"  备用方法提取第 {page_idx + 1} 页图片时出错: {e}")
         
         return images
+
+    def extract_text_blocks(self, start_page: int = 0, end_page: Optional[int] = None) -> List[TextBlock]:
+        if end_page is None:
+            end_page = self.get_total_pages() - 1
+        
+        text_blocks = []
+        
+        try:
+            for page_idx in range(start_page, min(end_page + 1, self.get_total_pages())):
+                if self.plumber_pdf:
+                    page = self.plumber_pdf.pages[page_idx]
+                    
+                    words = page.extract_words(keep_blank_chars=False, use_text_flow=True)
+                    
+                    current_line = []
+                    current_line_y = None
+                    current_line_x = None
+                    current_line_x1 = None
+                    
+                    for word in words:
+                        word_text = word.get('text', '')
+                        if not word_text.strip():
+                            continue
+                        
+                        word_y0 = float(word.get('top', 0))
+                        word_x0 = float(word.get('x0', 0))
+                        word_y1 = float(word.get('bottom', 0))
+                        word_x1 = float(word.get('x1', 0))
+                        
+                        if current_line_y is None or abs(word_y0 - current_line_y) > 5:
+                            if current_line:
+                                line_text = ' '.join(current_line)
+                                block = TextBlock(
+                                    text=line_text,
+                                    page_idx=page_idx,
+                                    x0=current_line_x,
+                                    y0=current_line_y,
+                                    x1=current_line_x1,
+                                    y1=current_line_y + 12
+                                )
+                                text_blocks.append(block)
+                            current_line = [word_text]
+                            current_line_y = word_y0
+                            current_line_x = word_x0
+                            current_line_x1 = word_x1
+                        else:
+                            current_line.append(word_text)
+                            current_line_x1 = max(current_line_x1 or 0, word_x1)
+                    
+                    if current_line:
+                        line_text = ' '.join(current_line)
+                        block = TextBlock(
+                            text=line_text,
+                            page_idx=page_idx,
+                            x0=current_line_x or 0,
+                            y0=current_line_y or 0,
+                            x1=current_line_x1 or 0,
+                            y1=(current_line_y or 0) + 12
+                        )
+                        text_blocks.append(block)
+        except Exception as e:
+            print(f"提取文本块时出错: {e}")
+        
+        return text_blocks
 
     def get_images_by_page(self, page_idx: int) -> List[PdfImage]:
         if not self._images:

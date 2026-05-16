@@ -1,11 +1,11 @@
 import re
-from typing import List, Dict, Tuple, Optional
+from typing import List, Dict, Tuple, Optional, Union
 from dataclasses import dataclass, field
 from bs4 import BeautifulSoup
 import html
 
 from .toc_extractor import Chapter
-from .pdf_parser import PdfImage
+from .pdf_parser import PdfImage, TextBlock
 
 
 @dataclass
@@ -47,7 +47,7 @@ class ContentProcessor:
         if chapter.content_start_page is None or chapter.content_end_page is None:
             return None
         
-        raw_text = pdf_parser.extract_page_range_text(
+        text_blocks = pdf_parser.extract_text_blocks(
             chapter.content_start_page,
             chapter.content_end_page
         )
@@ -57,10 +57,10 @@ class ContentProcessor:
             chapter.content_end_page
         )
         
-        if not raw_text.strip() and not images:
+        if not text_blocks and not images:
             return None
         
-        html_content = self._text_to_html(raw_text, chapter.title, chapter.level, images, chapter_id)
+        html_content = self._blocks_to_html(text_blocks, images, chapter.title, chapter.level)
         
         return ChapterContent(
             chapter_id=chapter_id,
@@ -70,6 +70,116 @@ class ContentProcessor:
             order=order,
             images=images
         )
+
+    def _blocks_to_html(self, text_blocks: List[TextBlock], images: List[PdfImage], title: str, level: int) -> str:
+        html_parts = []
+        
+        heading_level = min(level + 1, 6)
+        html_parts.append(f'<h{heading_level} id="{self._slugify(title)}">{html.escape(title)}</h{heading_level}>')
+        
+        if not text_blocks and not images:
+            return self._wrap_html_document('\n'.join(html_parts), title)
+        
+        items = self._merge_text_and_images(text_blocks, images)
+        
+        current_paragraph = []
+        
+        for item in items:
+            if isinstance(item, PdfImage):
+                if current_paragraph:
+                    paragraph_text = ' '.join(current_paragraph)
+                    paragraph_text = self._process_inline_formatting(paragraph_text)
+                    html_parts.append(f'<p>{paragraph_text}</p>')
+                    current_paragraph = []
+                
+                img_ext = self._get_image_extension(item.format)
+                img_src = f'images/{item.image_id}.{img_ext}'
+                img_html = f'<figure class="image-figure"><img src="{img_src}" alt="{item.image_id}" class="chapter-image"/>'
+                if item.width > 0 and item.height > 0:
+                    img_html = f'<figure class="image-figure"><img src="{img_src}" alt="{item.image_id}" class="chapter-image" width="{item.width}" height="{item.height}"/>'
+                img_html += f'<figcaption class="image-caption">图 {item.image_id}</figcaption></figure>'
+                html_parts.append(img_html)
+            else:
+                line = item.text.strip()
+                
+                if not line:
+                    if current_paragraph:
+                        paragraph_text = ' '.join(current_paragraph)
+                        paragraph_text = self._process_inline_formatting(paragraph_text)
+                        html_parts.append(f'<p>{paragraph_text}</p>')
+                        current_paragraph = []
+                    continue
+                
+                if self._is_heading(line):
+                    if current_paragraph:
+                        paragraph_text = ' '.join(current_paragraph)
+                        paragraph_text = self._process_inline_formatting(paragraph_text)
+                        html_parts.append(f'<p>{paragraph_text}</p>')
+                        current_paragraph = []
+                    
+                    heading_level = self._determine_heading_level(line)
+                    heading_text = self._strip_heading_markers(line)
+                    html_parts.append(f'<h{heading_level} id="{self._slugify(heading_text)}">{html.escape(heading_text)}</h{heading_level}>')
+                    continue
+                
+                if self._is_list_item(line):
+                    if current_paragraph:
+                        paragraph_text = ' '.join(current_paragraph)
+                        paragraph_text = self._process_inline_formatting(paragraph_text)
+                        html_parts.append(f'<p>{paragraph_text}</p>')
+                        current_paragraph = []
+                    
+                    list_text = self._strip_list_markers(line)
+                    list_text = self._process_inline_formatting(list_text)
+                    html_parts.append(f'<li>{list_text}</li>')
+                    continue
+                
+                if self._is_blockquote(line):
+                    if current_paragraph:
+                        paragraph_text = ' '.join(current_paragraph)
+                        paragraph_text = self._process_inline_formatting(paragraph_text)
+                        html_parts.append(f'<p>{paragraph_text}</p>')
+                        current_paragraph = []
+                    
+                    quote_text = self._strip_blockquote_markers(line)
+                    quote_text = self._process_inline_formatting(quote_text)
+                    html_parts.append(f'<blockquote>{quote_text}</blockquote>')
+                    continue
+                
+                current_paragraph.append(line)
+        
+        if current_paragraph:
+            paragraph_text = ' '.join(current_paragraph)
+            paragraph_text = self._process_inline_formatting(paragraph_text)
+            html_parts.append(f'<p>{paragraph_text}</p>')
+        
+        return self._wrap_html_document('\n'.join(html_parts), title)
+
+    def _merge_text_and_images(self, text_blocks: List[TextBlock], images: List[PdfImage]) -> List[Union[TextBlock, PdfImage]]:
+        merged = []
+        
+        for block in text_blocks:
+            merged.append(block)
+        
+        for img in images:
+            img_top = img.page_height - img.y1 if img.page_height > 0 else img.y0
+            insert_pos = 0
+            
+            for i, item in enumerate(merged):
+                if isinstance(item, PdfImage):
+                    item_top = item.page_height - item.y1 if item.page_height > 0 else item.y0
+                    if img.page_idx < item.page_idx or (img.page_idx == item.page_idx and img_top < item_top):
+                        insert_pos = i
+                        break
+                else:
+                    if img.page_idx < item.page_idx or (img.page_idx == item.page_idx and img_top < item.y0):
+                        insert_pos = i
+                        break
+                insert_pos = i + 1
+            
+            merged.insert(insert_pos, img)
+        
+        return merged
 
     def _text_to_html(self, text: str, title: str, level: int, images: List[PdfImage] = None, chapter_id: str = '') -> str:
         lines = text.split('\n') if text else []
