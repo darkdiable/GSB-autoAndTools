@@ -1,10 +1,11 @@
 import re
 from typing import List, Dict, Tuple, Optional
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from bs4 import BeautifulSoup
 import html
 
 from .toc_extractor import Chapter
+from .pdf_parser import PdfImage
 
 
 @dataclass
@@ -14,6 +15,7 @@ class ChapterContent:
     html_content: str
     level: int
     order: int
+    images: List[PdfImage] = field(default_factory=list)
 
 
 class ContentProcessor:
@@ -50,21 +52,27 @@ class ContentProcessor:
             chapter.content_end_page
         )
         
-        if not raw_text.strip():
+        images = pdf_parser.get_images_by_page_range(
+            chapter.content_start_page,
+            chapter.content_end_page
+        )
+        
+        if not raw_text.strip() and not images:
             return None
         
-        html_content = self._text_to_html(raw_text, chapter.title, chapter.level)
+        html_content = self._text_to_html(raw_text, chapter.title, chapter.level, images, chapter_id)
         
         return ChapterContent(
             chapter_id=chapter_id,
             title=chapter.title,
             html_content=html_content,
             level=chapter.level,
-            order=order
+            order=order,
+            images=images
         )
 
-    def _text_to_html(self, text: str, title: str, level: int) -> str:
-        lines = text.split('\n')
+    def _text_to_html(self, text: str, title: str, level: int, images: List[PdfImage] = None, chapter_id: str = '') -> str:
+        lines = text.split('\n') if text else []
         html_parts = []
         
         heading_level = min(level + 1, 6)
@@ -126,7 +134,29 @@ class ContentProcessor:
             paragraph_text = self._process_inline_formatting(paragraph_text)
             html_parts.append(f'<p>{paragraph_text}</p>')
         
+        if images:
+            html_parts.append('<div class="images-section">')
+            for img in images:
+                img_ext = self._get_image_extension(img.format)
+                img_src = f'images/{img.image_id}.{img_ext}'
+                img_html = f'<figure class="image-figure"><img src="{img_src}" alt="{img.image_id}" class="chapter-image"/>'
+                if img.width > 0 and img.height > 0:
+                    img_html = f'<figure class="image-figure"><img src="{img_src}" alt="{img.image_id}" class="chapter-image" width="{img.width}" height="{img.height}"/>'
+                img_html += f'<figcaption class="image-caption">图 {img.image_id}</figcaption></figure>'
+                html_parts.append(img_html)
+            html_parts.append('</div>')
+        
         return self._wrap_html_document('\n'.join(html_parts), title)
+
+    def _get_image_extension(self, img_format: str) -> str:
+        format_lower = img_format.lower()
+        if format_lower in ['jpeg', 'jpg', 'dct']:
+            return 'jpg'
+        elif format_lower == 'png':
+            return 'png'
+        elif format_lower in ['gif', 'jpeg2000', 'jp2', 'tif', 'tiff', 'bmp']:
+            return format_lower
+        return 'jpg'
 
     def _is_heading(self, line: str) -> bool:
         if len(line) > 100:
@@ -218,6 +248,10 @@ class ContentProcessor:
             blockquote { margin: 1em 2em; font-style: italic; color: #666; }
             li { margin: 0.25em 0; }
             code { font-family: monospace; background: #f0f0f0; padding: 0.1em 0.3em; }
+            .images-section { margin: 2em 0; text-align: center; }
+            .image-figure { margin: 1.5em auto; max-width: 100%; }
+            .chapter-image { max-width: 100%; height: auto; display: block; margin: 0 auto; border: 1px solid #ddd; }
+            .image-caption { margin-top: 0.5em; font-size: 0.9em; color: #666; font-style: italic; }
         '''
         head_tag.append(style_tag)
         

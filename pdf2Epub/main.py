@@ -32,6 +32,10 @@ class PdfToEpubConverter:
             total_pages = parser.get_total_pages()
             print(f"  共 {total_pages} 页")
             
+            print(f"  提取图片...")
+            images = parser.extract_all_images()
+            print(f"  共提取 {len(images)} 张图片")
+            
             print(f"  提取目录信息...")
             toc_extractor = TocExtractor()
             chapters = toc_extractor.extract_from_pdf(parser.get_pdf_reader(), pdf_texts)
@@ -45,7 +49,9 @@ class PdfToEpubConverter:
             print(f"  处理章节内容...")
             content_processor = ContentProcessor()
             chapter_contents = content_processor.process_chapters(chapters, parser)
-            print(f"  共处理 {len(chapter_contents)} 个章节")
+            
+            total_images_in_chapters = sum(len(c.images) for c in chapter_contents)
+            print(f"  共处理 {len(chapter_contents)} 个章节，包含 {total_images_in_chapters} 张图片")
             
             print(f"  生成EPUB...")
             epub_generator = EpubGenerator(self.epub_dir)

@@ -5,6 +5,7 @@ from bs4 import BeautifulSoup
 
 from .toc_extractor import Chapter
 from .content_processor import ChapterContent
+from .pdf_parser import PdfImage
 
 
 class EpubGenerator:
@@ -73,6 +74,9 @@ class EpubGenerator:
             content=style
         )
         book.add_item(nav_css)
+        
+        all_images = self._collect_all_images(chapter_contents)
+        self._add_images_to_book(book, all_images)
         
         spine = [nav_page]
         for content in chapter_contents:
@@ -177,3 +181,64 @@ class EpubGenerator:
         for char in invalid_chars:
             filename = filename.replace(char, '_')
         return filename.strip()
+
+    def _collect_all_images(self, chapter_contents: List[ChapterContent]) -> List[PdfImage]:
+        all_images = []
+        seen_ids = set()
+        
+        for content in chapter_contents:
+            if content.images:
+                for img in content.images:
+                    if img.image_id not in seen_ids:
+                        seen_ids.add(img.image_id)
+                        all_images.append(img)
+        
+        return all_images
+
+    def _add_images_to_book(self, book, images: List[PdfImage]):
+        for img in images:
+            try:
+                img_ext = self._get_image_extension(img.format)
+                media_type = self._get_media_type(img.format)
+                
+                epub_image = epub.EpubItem(
+                    uid=img.image_id,
+                    file_name=f'images/{img.image_id}.{img_ext}',
+                    media_type=media_type,
+                    content=img.data
+                )
+                book.add_item(epub_image)
+            except Exception as e:
+                print(f"  添加图片 {img.image_id} 时出错: {e}")
+
+    def _get_image_extension(self, img_format: str) -> str:
+        format_lower = img_format.lower()
+        if format_lower in ['jpeg', 'jpg', 'dct']:
+            return 'jpg'
+        elif format_lower == 'png':
+            return 'png'
+        elif format_lower == 'gif':
+            return 'gif'
+        elif format_lower in ['jpeg2000', 'jp2']:
+            return 'jp2'
+        elif format_lower in ['tif', 'tiff']:
+            return 'tiff'
+        elif format_lower == 'bmp':
+            return 'bmp'
+        return 'jpg'
+
+    def _get_media_type(self, img_format: str) -> str:
+        format_lower = img_format.lower()
+        if format_lower in ['jpeg', 'jpg', 'dct']:
+            return 'image/jpeg'
+        elif format_lower == 'png':
+            return 'image/png'
+        elif format_lower == 'gif':
+            return 'image/gif'
+        elif format_lower in ['jpeg2000', 'jp2']:
+            return 'image/jp2'
+        elif format_lower in ['tif', 'tiff']:
+            return 'image/tiff'
+        elif format_lower == 'bmp':
+            return 'image/bmp'
+        return 'image/jpeg'
