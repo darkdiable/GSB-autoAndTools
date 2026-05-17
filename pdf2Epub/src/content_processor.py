@@ -244,30 +244,29 @@ class ContentProcessor:
         return f'<p{indent_style}>{paragraph_text}</p>'
     
     def _merge_text_and_images(self, text_blocks: List[TextBlock], images: List[PdfImage]) -> List[Union[TextBlock, PdfImage]]:
-        merged = []
+        all_items = []
         
         for block in text_blocks:
-            merged.append(block)
+            all_items.append(block)
         
         for img in images:
-            img_top = img.page_height - img.y1 if img.page_height > 0 else img.y0
-            insert_pos = 0
-            
-            for i, item in enumerate(merged):
-                if isinstance(item, PdfImage):
-                    item_top = item.page_height - item.y1 if item.page_height > 0 else item.y0
-                    if img.page_idx < item.page_idx or (img.page_idx == item.page_idx and img_top < item_top):
-                        insert_pos = i
-                        break
-                else:
-                    if img.page_idx < item.page_idx or (img.page_idx == item.page_idx and img_top < item.y0):
-                        insert_pos = i
-                        break
-                insert_pos = i + 1
-            
-            merged.insert(insert_pos, img)
+            all_items.append(img)
         
-        return merged
+        def get_sort_key(item):
+            if isinstance(item, PdfImage):
+                page_idx = item.page_idx
+                y_top = item.page_height - item.y1 if item.page_height > 0 else item.y0
+                x_left = item.x0
+                return (page_idx, y_top, x_left, 1)
+            else:
+                page_idx = item.page_idx
+                y_top = item.y0
+                x_left = item.x0
+                return (page_idx, y_top, x_left, 0)
+        
+        all_items.sort(key=get_sort_key)
+        
+        return all_items
 
     def _text_to_html(self, text: str, title: str, level: int, images: List[PdfImage] = None, chapter_id: str = '') -> str:
         lines = text.split('\n') if text else []
