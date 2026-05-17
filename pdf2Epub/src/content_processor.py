@@ -82,15 +82,14 @@ class ContentProcessor:
         
         items = self._merge_text_and_images(text_blocks, images)
         
-        current_paragraph = []
+        body_font_size = self._find_body_font_size(text_blocks)
+        current_paragraph_blocks = []
         
-        for item in items:
+        for i, item in enumerate(items):
             if isinstance(item, PdfImage):
-                if current_paragraph:
-                    paragraph_text = ' '.join(current_paragraph)
-                    paragraph_text = self._process_inline_formatting(paragraph_text)
-                    html_parts.append(f'<p>{paragraph_text}</p>')
-                    current_paragraph = []
+                if current_paragraph_blocks:
+                    html_parts.append(self._render_paragraph(current_paragraph_blocks))
+                    current_paragraph_blocks = []
                 
                 img_ext = self._get_image_extension(item.format)
                 img_src = f'images/{item.image_id}.{img_ext}'
@@ -103,31 +102,25 @@ class ContentProcessor:
                 line = item.text.strip()
                 
                 if not line:
-                    if current_paragraph:
-                        paragraph_text = ' '.join(current_paragraph)
-                        paragraph_text = self._process_inline_formatting(paragraph_text)
-                        html_parts.append(f'<p>{paragraph_text}</p>')
-                        current_paragraph = []
+                    if current_paragraph_blocks:
+                        html_parts.append(self._render_paragraph(current_paragraph_blocks))
+                        current_paragraph_blocks = []
                     continue
                 
-                if self._is_heading(line):
-                    if current_paragraph:
-                        paragraph_text = ' '.join(current_paragraph)
-                        paragraph_text = self._process_inline_formatting(paragraph_text)
-                        html_parts.append(f'<p>{paragraph_text}</p>')
-                        current_paragraph = []
+                if self._is_heading_block(item, body_font_size):
+                    if current_paragraph_blocks:
+                        html_parts.append(self._render_paragraph(current_paragraph_blocks))
+                        current_paragraph_blocks = []
                     
-                    heading_level = self._determine_heading_level(line)
-                    heading_text = self._strip_heading_markers(line)
+                    heading_level = self._determine_heading_block_level(item, body_font_size)
+                    heading_text = item.text.strip()
                     html_parts.append(f'<h{heading_level} id="{self._slugify(heading_text)}">{html.escape(heading_text)}</h{heading_level}>')
                     continue
                 
                 if self._is_list_item(line):
-                    if current_paragraph:
-                        paragraph_text = ' '.join(current_paragraph)
-                        paragraph_text = self._process_inline_formatting(paragraph_text)
-                        html_parts.append(f'<p>{paragraph_text}</p>')
-                        current_paragraph = []
+                    if current_paragraph_blocks:
+                        html_parts.append(self._render_paragraph(current_paragraph_blocks))
+                        current_paragraph_blocks = []
                     
                     list_text = self._strip_list_markers(line)
                     list_text = self._process_inline_formatting(list_text)
@@ -135,26 +128,121 @@ class ContentProcessor:
                     continue
                 
                 if self._is_blockquote(line):
-                    if current_paragraph:
-                        paragraph_text = ' '.join(current_paragraph)
-                        paragraph_text = self._process_inline_formatting(paragraph_text)
-                        html_parts.append(f'<p>{paragraph_text}</p>')
-                        current_paragraph = []
+                    if current_paragraph_blocks:
+                        html_parts.append(self._render_paragraph(current_paragraph_blocks))
+                        current_paragraph_blocks = []
                     
                     quote_text = self._strip_blockquote_markers(line)
                     quote_text = self._process_inline_formatting(quote_text)
                     html_parts.append(f'<blockquote>{quote_text}</blockquote>')
                     continue
                 
-                current_paragraph.append(line)
+                if current_paragraph_blocks:
+                    prev_block = current_paragraph_blocks[-1]
+                    if self._should_start_new_paragraph(prev_block, item, body_font_size):
+                        html_parts.append(self._render_paragraph(current_paragraph_blocks))
+                        current_paragraph_blocks = []
+                
+                current_paragraph_blocks.append(item)
         
-        if current_paragraph:
-            paragraph_text = ' '.join(current_paragraph)
-            paragraph_text = self._process_inline_formatting(paragraph_text)
-            html_parts.append(f'<p>{paragraph_text}</p>')
+        if current_paragraph_blocks:
+            html_parts.append(self._render_paragraph(current_paragraph_blocks))
         
         return self._wrap_html_document('\n'.join(html_parts), title)
 
+    def _find_body_font_size(self, text_blocks: List[TextBlock]) -> float:
+        font_size_counts = {}
+        for block in text_blocks:
+            if block.font_size > 0:
+                rounded_size = round(block.font_size, 1)
+                font_size_counts[rounded_size] = font_size_counts.get(rounded_size, 0) + 1
+        
+        if font_size_counts:
+            return max(font_size_counts.items(), key=lambda x: x[1])[0]
+        return 10.0
+    
+    def _is_heading_block(self, block: TextBlock, body_font_size: float) -> bool:
+        if block.is_heading:
+            return True
+        
+        if block.font_size > body_font_size * 1.15:
+            return True
+        
+        if block.is_bold and block.font_size >= body_font_size * 1.05 and len(block.text.strip()) < 100:
+            return True
+        
+        if self._is_heading(block.text):
+            return True
+        
+        return False
+    
+    def _determine_heading_block_level(self, block: TextBlock, body_font_size: float) -> int:
+        if block.heading_level and block.heading_level > 0:
+            return min(block.heading_level, 6)
+        
+        if block.font_size > body_font_size * 1.5:
+            return 2
+        elif block.font_size > body_font_size * 1.3:
+            return 3
+        elif block.font_size > body_font_size * 1.15:
+            return 4
+        
+        return self._determine_heading_level(block.text)
+    
+    def _should_start_new_paragraph(self, prev_block: TextBlock, curr_block: TextBlock, body_font_size: float) -> bool:
+        if curr_block.page_idx != prev_block.page_idx:
+            return True
+        
+        line_gap = curr_block.y0 - prev_block.y1
+        if line_gap > body_font_size * 0.8:
+            return True
+        
+        if curr_block.indent_level > prev_block.indent_level:
+            return True
+        
+        if curr_block.is_bold and not prev_block.is_bold and len(curr_block.text.strip()) < 100:
+            return True
+        
+        prev_text = prev_block.text.strip()
+        curr_text = curr_block.text.strip()
+        
+        if prev_text and prev_text[-1] in '.!?。！？':
+            if curr_text and curr_text[0].isupper() or (curr_text and '\u4e00' <= curr_text[0] <= '\u9fff'):
+                if line_gap > body_font_size * 0.3:
+                    return True
+        
+        return False
+    
+    def _render_paragraph(self, blocks: List[TextBlock]) -> str:
+        if not blocks:
+            return ''
+        
+        text_parts = []
+        for block in blocks:
+            text = block.text.strip()
+            if not text:
+                continue
+            
+            if block.is_bold and block.is_italic:
+                text = f'**_{text}_**'
+            elif block.is_bold:
+                text = f'**{text}**'
+            elif block.is_italic:
+                text = f'_{text}_'
+            
+            text_parts.append(text)
+        
+        paragraph_text = ' '.join(text_parts)
+        paragraph_text = self._process_inline_formatting(paragraph_text)
+        
+        first_block = blocks[0]
+        indent_style = ''
+        if first_block.indent_level > 0:
+            indent = first_block.indent_level * 2
+            indent_style = f' style="margin-left: {indent}em;"'
+        
+        return f'<p{indent_style}>{paragraph_text}</p>'
+    
     def _merge_text_and_images(self, text_blocks: List[TextBlock], images: List[PdfImage]) -> List[Union[TextBlock, PdfImage]]:
         merged = []
         
@@ -350,16 +438,71 @@ class ContentProcessor:
         
         style_tag = soup.new_tag('style', type='text/css')
         style_tag.string = '''
-            body { font-family: serif; line-height: 1.6; margin: 1em; }
-            h1, h2, h3, h4, h5, h6 { font-family: sans-serif; margin-top: 1.5em; margin-bottom: 0.5em; }
-            p { margin: 0.5em 0; text-indent: 2em; }
-            blockquote { margin: 1em 2em; font-style: italic; color: #666; }
-            li { margin: 0.25em 0; }
-            code { font-family: monospace; background: #f0f0f0; padding: 0.1em 0.3em; }
+            @page { margin: 0.5em; }
+            body { font-family: "Georgia", "Times New Roman", serif; line-height: 1.8; margin: 0; padding: 1em; text-align: justify; }
+            h1, h2, h3, h4, h5, h6 { 
+                font-family: "Helvetica", "Arial", sans-serif; 
+                font-weight: bold;
+                page-break-after: avoid;
+                page-break-inside: avoid;
+            }
+            h1 { font-size: 2.0em; margin-top: 1.5em; margin-bottom: 0.8em; line-height: 1.3; }
+            h2 { font-size: 1.6em; margin-top: 1.3em; margin-bottom: 0.7em; line-height: 1.3; }
+            h3 { font-size: 1.3em; margin-top: 1.1em; margin-bottom: 0.6em; line-height: 1.3; }
+            h4 { font-size: 1.15em; margin-top: 1.0em; margin-bottom: 0.5em; line-height: 1.3; }
+            h5 { font-size: 1.05em; margin-top: 0.9em; margin-bottom: 0.4em; line-height: 1.3; }
+            h6 { font-size: 1.0em; margin-top: 0.8em; margin-bottom: 0.4em; line-height: 1.3; }
+            p { margin: 0.6em 0; text-indent: 2em; orphans: 2; widows: 2; }
+            p:first-of-type { text-indent: 0; }
+            strong { font-weight: bold; }
+            em { font-style: italic; }
+            blockquote { 
+                margin: 1.2em 2em; 
+                padding: 0.5em 1em;
+                font-style: italic; 
+                color: #555; 
+                border-left: 3px solid #ccc;
+                background: #f9f9f9;
+            }
+            ul, ol { margin: 0.8em 0; padding-left: 2em; }
+            li { margin: 0.4em 0; }
+            code { 
+                font-family: "Courier New", Courier, monospace; 
+                background: #f5f5f5; 
+                padding: 0.15em 0.4em; 
+                border-radius: 3px;
+                font-size: 0.95em;
+            }
+            pre { 
+                font-family: "Courier New", Courier, monospace; 
+                background: #f5f5f5; 
+                padding: 1em; 
+                overflow-x: auto;
+                border-radius: 5px;
+            }
             .images-section { margin: 2em 0; text-align: center; }
-            .image-figure { margin: 1.5em auto; max-width: 100%; }
-            .chapter-image { max-width: 100%; height: auto; display: block; margin: 0 auto; border: 1px solid #ddd; }
-            .image-caption { margin-top: 0.5em; font-size: 0.9em; color: #666; font-style: italic; }
+            .image-figure { 
+                margin: 1.5em auto; 
+                max-width: 100%; 
+                text-align: center;
+                page-break-inside: avoid;
+            }
+            .chapter-image { 
+                max-width: 100%; 
+                height: auto; 
+                display: block; 
+                margin: 0 auto; 
+                border: 1px solid #ddd;
+                box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            }
+            .image-caption { 
+                margin-top: 0.6em; 
+                font-size: 0.9em; 
+                color: #666; 
+                font-style: italic;
+                text-align: center;
+            }
+            hr { border: none; border-top: 1px solid #ddd; margin: 2em 0; }
         '''
         head_tag.append(style_tag)
         

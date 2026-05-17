@@ -31,7 +31,13 @@ class TextBlock:
     x1: float
     y1: float
     font_size: float = 0.0
+    font_name: str = ''
+    is_bold: bool = False
+    is_italic: bool = False
     is_heading: bool = False
+    heading_level: int = 0
+    line_spacing: float = 0.0
+    indent_level: int = 0
 
 
 class PdfParser:
@@ -614,18 +620,23 @@ class PdfParser:
             end_page = self.get_total_pages() - 1
         
         text_blocks = []
+        all_font_sizes = []
         
         try:
             for page_idx in range(start_page, min(end_page + 1, self.get_total_pages())):
                 if self.plumber_pdf:
                     page = self.plumber_pdf.pages[page_idx]
                     
-                    words = page.extract_words(keep_blank_chars=False, use_text_flow=True)
+                    words = page.extract_words(keep_blank_chars=False, use_text_flow=True, extra_attrs=['fontname', 'size'])
                     
                     current_line = []
                     current_line_y = None
                     current_line_x = None
                     current_line_x1 = None
+                    current_font_size = 0.0
+                    current_font_name = ''
+                    current_is_bold = False
+                    current_is_italic = False
                     
                     for word in words:
                         word_text = word.get('text', '')
@@ -636,6 +647,13 @@ class PdfParser:
                         word_x0 = float(word.get('x0', 0))
                         word_y1 = float(word.get('bottom', 0))
                         word_x1 = float(word.get('x1', 0))
+                        word_size = float(word.get('size', 0))
+                        word_font = word.get('fontname', '')
+                        
+                        word_is_bold = 'Bold' in word_font or 'bold' in word_font or 'Black' in word_font or 'black' in word_font
+                        word_is_italic = 'Italic' in word_font or 'italic' in word_font or 'Oblique' in word_font or 'oblique' in word_font
+                        
+                        all_font_sizes.append(word_size)
                         
                         if current_line_y is None or abs(word_y0 - current_line_y) > 5:
                             if current_line:
@@ -646,16 +664,30 @@ class PdfParser:
                                     x0=current_line_x,
                                     y0=current_line_y,
                                     x1=current_line_x1,
-                                    y1=current_line_y + 12
+                                    y1=current_line_y + (current_font_size * 1.2 if current_font_size > 0 else 12),
+                                    font_size=current_font_size,
+                                    font_name=current_font_name,
+                                    is_bold=current_is_bold,
+                                    is_italic=current_is_italic
                                 )
                                 text_blocks.append(block)
                             current_line = [word_text]
                             current_line_y = word_y0
                             current_line_x = word_x0
                             current_line_x1 = word_x1
+                            current_font_size = word_size
+                            current_font_name = word_font
+                            current_is_bold = word_is_bold
+                            current_is_italic = word_is_italic
                         else:
                             current_line.append(word_text)
                             current_line_x1 = max(current_line_x1 or 0, word_x1)
+                            if word_size > current_font_size:
+                                current_font_size = word_size
+                            if word_is_bold:
+                                current_is_bold = True
+                            if word_is_italic:
+                                current_is_italic = True
                     
                     if current_line:
                         line_text = ' '.join(current_line)
@@ -665,13 +697,69 @@ class PdfParser:
                             x0=current_line_x or 0,
                             y0=current_line_y or 0,
                             x1=current_line_x1 or 0,
-                            y1=(current_line_y or 0) + 12
+                            y1=(current_line_y or 0) + (current_font_size * 1.2 if current_font_size > 0 else 12),
+                            font_size=current_font_size,
+                            font_name=current_font_name,
+                            is_bold=current_is_bold,
+                            is_italic=current_is_italic
                         )
                         text_blocks.append(block)
         except Exception as e:
             print(f"提取文本块时出错: {e}")
         
+        if text_blocks and all_font_sizes:
+            self._analyze_heading_levels(text_blocks, all_font_sizes)
+            self._calculate_indent_levels(text_blocks)
+        
         return text_blocks
+    
+    def _analyze_heading_levels(self, text_blocks: List[TextBlock], all_font_sizes: List[float]):
+        if not all_font_sizes:
+            return
+        
+        sorted_sizes = sorted(set(all_font_sizes), reverse=True)
+        
+        body_font_size = self._find_body_font_size(text_blocks)
+        
+        heading_sizes = [s for s in sorted_sizes if s > body_font_size * 1.1]
+        
+        heading_size_to_level = {}
+        for i, size in enumerate(heading_sizes[:6]):
+            heading_size_to_level[size] = i + 1
+        
+        for block in text_blocks:
+            if block.font_size > 0 and block.font_size in heading_size_to_level:
+                block.is_heading = True
+                block.heading_level = heading_size_to_level[block.font_size]
+            elif block.font_size > body_font_size * 1.2:
+                block.is_heading = True
+                block.heading_level = min(6, max(1, int((block.font_size - body_font_size) / 2) + 1))
+    
+    def _find_body_font_size(self, text_blocks: List[TextBlock]) -> float:
+        font_size_counts = {}
+        for block in text_blocks:
+            if block.font_size > 0:
+                rounded_size = round(block.font_size, 1)
+                font_size_counts[rounded_size] = font_size_counts.get(rounded_size, 0) + 1
+        
+        if font_size_counts:
+            return max(font_size_counts.items(), key=lambda x: x[1])[0]
+        return 10.0
+    
+    def _calculate_indent_levels(self, text_blocks: List[TextBlock]):
+        if not text_blocks:
+            return
+        
+        x0_values = [block.x0 for block in text_blocks if block.x0 > 0]
+        if not x0_values:
+            return
+        
+        min_x0 = min(x0_values)
+        
+        for block in text_blocks:
+            if block.x0 > min_x0:
+                indent = block.x0 - min_x0
+                block.indent_level = int(indent // 20) + 1
 
     def get_images_by_page(self, page_idx: int) -> List[PdfImage]:
         if not self._images:

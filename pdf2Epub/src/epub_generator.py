@@ -56,14 +56,73 @@ class EpubGenerator:
         
         style = '''
             @namespace epub "http://www.idpf.org/2007/ops";
-            body { font-family: serif; line-height: 1.6; margin: 1em; }
-            h1, h2, h3, h4, h5, h6 { font-family: sans-serif; margin-top: 1.5em; margin-bottom: 0.5em; }
-            p { margin: 0.5em 0; text-indent: 2em; }
-            blockquote { margin: 1em 2em; font-style: italic; color: #666; }
-            li { margin: 0.25em 0; }
-            code { font-family: monospace; background: #f0f0f0; padding: 0.1em 0.3em; }
+            @page { margin: 0.5em; }
+            body { font-family: "Georgia", "Times New Roman", serif; line-height: 1.8; margin: 0; padding: 1em; text-align: justify; }
+            h1, h2, h3, h4, h5, h6 { 
+                font-family: "Helvetica", "Arial", sans-serif; 
+                font-weight: bold;
+                page-break-after: avoid;
+                page-break-inside: avoid;
+            }
+            h1 { font-size: 2.0em; margin-top: 1.5em; margin-bottom: 0.8em; line-height: 1.3; }
+            h2 { font-size: 1.6em; margin-top: 1.3em; margin-bottom: 0.7em; line-height: 1.3; }
+            h3 { font-size: 1.3em; margin-top: 1.1em; margin-bottom: 0.6em; line-height: 1.3; }
+            h4 { font-size: 1.15em; margin-top: 1.0em; margin-bottom: 0.5em; line-height: 1.3; }
+            h5 { font-size: 1.05em; margin-top: 0.9em; margin-bottom: 0.4em; line-height: 1.3; }
+            h6 { font-size: 1.0em; margin-top: 0.8em; margin-bottom: 0.4em; line-height: 1.3; }
+            p { margin: 0.6em 0; text-indent: 2em; orphans: 2; widows: 2; }
+            p:first-of-type { text-indent: 0; }
+            strong { font-weight: bold; }
+            em { font-style: italic; }
+            blockquote { 
+                margin: 1.2em 2em; 
+                padding: 0.5em 1em;
+                font-style: italic; 
+                color: #555; 
+                border-left: 3px solid #ccc;
+                background: #f9f9f9;
+            }
+            ul, ol { margin: 0.8em 0; padding-left: 2em; }
+            li { margin: 0.4em 0; }
+            code { 
+                font-family: "Courier New", Courier, monospace; 
+                background: #f5f5f5; 
+                padding: 0.15em 0.4em; 
+                border-radius: 3px;
+                font-size: 0.95em;
+            }
+            pre { 
+                font-family: "Courier New", Courier, monospace; 
+                background: #f5f5f5; 
+                padding: 1em; 
+                overflow-x: auto;
+                border-radius: 5px;
+            }
+            .images-section { margin: 2em 0; text-align: center; }
+            .image-figure { 
+                margin: 1.5em auto; 
+                max-width: 100%; 
+                text-align: center;
+                page-break-inside: avoid;
+            }
+            .chapter-image { 
+                max-width: 100%; 
+                height: auto; 
+                display: block; 
+                margin: 0 auto; 
+                border: 1px solid #ddd;
+                box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            }
+            .image-caption { 
+                margin-top: 0.6em; 
+                font-size: 0.9em; 
+                color: #666; 
+                font-style: italic;
+                text-align: center;
+            }
+            hr { border: none; border-top: 1px solid #ddd; margin: 2em 0; }
             .toc { list-style: none; padding-left: 1em; }
-            .toc li { margin: 0.3em 0; }
+            .toc li { margin: 0.4em 0; }
             .toc a { text-decoration: none; color: inherit; }
             .toc a:hover { text-decoration: underline; }
         '''
