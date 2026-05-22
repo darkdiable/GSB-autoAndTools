@@ -232,7 +232,7 @@ def example_9_file_converter_class():
     print("=" * 60)
 
     test_dir = os.path.join(os.path.dirname(__file__), 'test_data')
-    input_file = os.path.join(test_dir, 'input.txt')
+    input_file = os.path.join(test_dir, 'sample_simplified.txt')
 
     file_converter = FileConverter(ConversionDirection.SIMPLIFIED_TO_TRADITIONAL)
     print(f"\nFileConverter 当前方向: {file_converter.direction}")
