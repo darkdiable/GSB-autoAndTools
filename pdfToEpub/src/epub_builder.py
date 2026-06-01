@@ -63,7 +63,7 @@ class EPUBBuilder:
     def _add_images(self, book: epub.EpubBook) -> None:
         all_images = self.content_processor.get_all_images()
         for img in all_images:
-            media_type = f"image/{img.format}"
+            media_type = self._get_media_type(img.format)
             epub_img = epub.EpubItem(
                 uid=img.image_id,
                 file_name=img.file_name,
@@ -72,6 +72,18 @@ class EPUBBuilder:
             )
             book.add_item(epub_img)
             self._image_map[img.image_id] = img
+
+    @staticmethod
+    def _get_media_type(img_format: str) -> str:
+        mapping = {
+            "png": "image/png",
+            "jpeg": "image/jpeg",
+            "jpg": "image/jpeg",
+            "gif": "image/gif",
+            "bmp": "image/bmp",
+            "svg": "image/svg+xml",
+        }
+        return mapping.get(img_format, "image/png")
 
     def _create_chapters(
         self,
@@ -98,27 +110,15 @@ class EPUBBuilder:
         return epub_chapters
 
     def _build_chapter_html_body(self, content: ChapterContent) -> str:
-        html_parts = []
+        elements = content.get_elements()
+        if elements:
+            return self.content_processor.elements_to_html(elements)
 
         text = content.get_full_text()
         if text.strip():
-            text_html = self.content_processor.text_to_html_paragraphs(text)
-            html_parts.append(text_html)
+            return self.content_processor.text_to_html_paragraphs(text)
 
-        images = content.get_images()
-        if images:
-            for img in images:
-                img_html = self._build_image_html(img)
-                html_parts.append(img_html)
-
-        return "\n".join(html_parts)
-
-    def _build_image_html(self, img: ImageContent) -> str:
-        escaped_src = self.content_processor.html_escape(img.file_name)
-        escaped_alt = self.content_processor.html_escape(
-            f"Image from page {img.page_number}"
-        )
-        return f'<div class="image-container"><img src="{escaped_src}" alt="{escaped_alt}" class="chapter-image"/></div>'
+        return ""
 
     def _setup_navigation(
         self,
