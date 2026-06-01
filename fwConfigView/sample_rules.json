@@ -1,0 +1,92 @@
+[
+  {
+    "id": "rule_001",
+    "priority": 10,
+    "src_ip": "192.168.1.0/24",
+    "dst_ip": "10.0.0.0/8",
+    "protocol": "tcp",
+    "port": "80",
+    "action": "allow"
+  },
+  {
+    "id": "rule_002",
+    "priority": 20,
+    "src_ip": "192.168.1.0/24",
+    "dst_ip": "10.0.0.0/8",
+    "protocol": "tcp",
+    "port": "443",
+    "action": "allow"
+  },
+  {
+    "id": "rule_003",
+    "priority": 30,
+    "src_ip": "192.168.1.0/24",
+    "dst_ip": "10.0.0.0/8",
+    "protocol": "tcp",
+    "port": "22",
+    "action": "allow"
+  },
+  {
+    "id": "rule_004",
+    "priority": 40,
+    "src_ip": "0.0.0.0/0",
+    "dst_ip": "10.0.0.0/8",
+    "protocol": "udp",
+    "port": "53",
+    "action": "allow"
+  },
+  {
+    "id": "rule_005",
+    "priority": 50,
+    "src_ip": "172.16.0.0/12",
+    "dst_ip": "10.0.0.0/8",
+    "protocol": "tcp",
+    "port": "3306",
+    "action": "deny"
+  },
+  {
+    "id": "rule_006",
+    "priority": 60,
+    "src_ip": "0.0.0.0/0",
+    "dst_ip": "192.168.1.0/24",
+    "protocol": "tcp",
+    "port": "8080-8090",
+    "action": "allow"
+  },
+  {
+    "id": "rule_007",
+    "priority": 70,
+    "src_ip": "10.0.0.0/8",
+    "dst_ip": "0.0.0.0/0",
+    "protocol": "icmp",
+    "port": "any",
+    "action": "allow"
+  },
+  {
+    "id": "rule_008",
+    "priority": 80,
+    "src_ip": "0.0.0.0/0",
+    "dst_ip": "0.0.0.0/0",
+    "protocol": "tcp",
+    "port": "any",
+    "action": "deny"
+  },
+  {
+    "id": "rule_009",
+    "priority": 90,
+    "src_ip": "192.168.0.0/16",
+    "dst_ip": "10.0.0.5",
+    "protocol": "tcp",
+    "port": "22",
+    "action": "deny"
+  },
+  {
+    "id": "rule_010",
+    "priority": 100,
+    "src_ip": "0.0.0.0/0",
+    "dst_ip": "0.0.0.0/0",
+    "protocol": "udp",
+    "port": "any",
+    "action": "deny"
+  }
+]
