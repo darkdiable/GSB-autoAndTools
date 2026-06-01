@@ -24,19 +24,39 @@ class EPUBBuilder:
 
     def build(self, output_path: str) -> str:
         book = epub.EpubBook()
+        book.set_identifier("book_" + str(hash(self.book_title))[:8])
         book.set_title(self.book_title)
         book.set_language(self.language)
         book.add_author(self.book_author)
+
+        self._add_styles(book)
 
         chapter_contents = self.toc_processor.build_chapter_contents()
         toc_items = self.toc_processor.get_toc_items()
 
         epub_chapters = self._create_chapters(book, chapter_contents)
         self._setup_navigation(book, epub_chapters, toc_items)
-        self._add_cover_page(book, epub_chapters)
+        self._setup_spine(book, epub_chapters)
 
         epub.write_epub(output_path, book, {})
         return output_path
+
+    def _add_styles(self, book: epub.EpubBook) -> None:
+        default_css = epub.EpubItem(
+            uid="style_default",
+            file_name="style/default.css",
+            media_type="text/css",
+            content=self._get_default_css().encode("utf-8"),
+        )
+        book.add_item(default_css)
+
+        nav_css = epub.EpubItem(
+            uid="style_nav",
+            file_name="style/nav.css",
+            media_type="text/css",
+            content=self._get_nav_css().encode("utf-8"),
+        )
+        book.add_item(nav_css)
 
     def _create_chapters(
         self,
@@ -49,7 +69,8 @@ class EPUBBuilder:
             html_body = self.content_processor.text_to_html_paragraphs(
                 content.get_full_text()
             )
-            html_content = self._wrap_chapter_html(content.title, html_body)
+            escaped_title = self.content_processor.html_escape(content.title)
+            html_content = self._wrap_chapter_html(escaped_title, html_body)
 
             chapter = epub.EpubHtml(
                 title=content.title,
@@ -57,14 +78,6 @@ class EPUBBuilder:
                 lang=self.language,
             )
             chapter.content = html_content
-            chapter.add_item(
-                epub.EpubItem(
-                    uid="style_default",
-                    file_name="style/default.css",
-                    media_type="text/css",
-                    content=self._get_default_css().encode("utf-8"),
-                )
-            )
 
             book.add_item(chapter)
             epub_chapters.append(chapter)
@@ -77,59 +90,23 @@ class EPUBBuilder:
         epub_chapters: List[epub.EpubHtml],
         toc_items: list,
     ) -> None:
-        toc = []
-        for chapter, (title, chapter_id, level) in zip(epub_chapters, toc_items):
-            if level == 1:
-                section = epub.Section(title)
-                nested = []
-                toc.append((section, nested))
-            else:
-                if toc and isinstance(toc[-1], tuple):
-                    toc[-1][1].append(chapter)
-                else:
-                    toc.append(chapter)
-
-        flat_toc = []
-        for item in toc:
-            if isinstance(item, tuple):
-                section, nested = item
-                flat_toc.append(section)
-                flat_toc.extend(nested)
-            else:
-                flat_toc.append(item)
-
-        if not flat_toc:
-            flat_toc = epub_chapters
-
-        book.toc = flat_toc
+        book.toc = tuple(epub_chapters)
 
         book.add_item(epub.EpubNcx())
         book.add_item(epub.EpubNav())
 
-        style_item = epub.EpubItem(
-            uid="style_nav",
-            file_name="style/nav.css",
-            media_type="text/css",
-            content=self._get_nav_css().encode("utf-8"),
-        )
-        book.add_item(style_item)
-
-    def _add_cover_page(
+    def _setup_spine(
         self,
         book: epub.EpubBook,
         epub_chapters: List[epub.EpubHtml],
     ) -> None:
         spine = ["nav"]
-        if epub_chapters:
-            spine.append(epub_chapters[0])
-            spine.extend(epub_chapters[1:])
+        spine.extend(epub_chapters)
         book.spine = spine
 
     @staticmethod
     def _wrap_chapter_html(title: str, body_html: str) -> str:
-        return f"""<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE html>
-<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">
+        return f"""<html>
 <head>
     <title>{title}</title>
     <link rel="stylesheet" type="text/css" href="style/default.css"/>
@@ -142,8 +119,9 @@ class EPUBBuilder:
 
     @staticmethod
     def _get_default_css() -> str:
-        return """body {
-    font-family: serif;
+        return """@namespace epub "http://www.idpf.org/2007/ops";
+body {
+    font-family: Georgia, serif;
     line-height: 1.8;
     margin: 1em;
     color: #333;
@@ -151,7 +129,7 @@ class EPUBBuilder:
 h1 {
     font-size: 1.5em;
     text-align: center;
-    margin-bottom: 1em;
+    margin: 1em 0;
     color: #222;
     border-bottom: 1px solid #ccc;
     padding-bottom: 0.5em;
