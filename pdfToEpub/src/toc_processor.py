@@ -10,20 +10,20 @@ class ChapterInfo:
     title: str
     chapter_id: str
     page_number: int
+    line_index: int = 0
     level: int = 1
 
 
 class TOCProcessor:
     CHAPTER_PATTERNS = [
         re.compile(
-            r"^第[一二三四五六七八九十百千万零〇\d]+[章节篇部回卷]",
+            r"^\s*第[一二三四五六七八九十百千万零〇\d]+[章节篇部回卷]\b",
             re.UNICODE,
         ),
-        re.compile(r"^Chapter\s+\d+", re.IGNORECASE),
-        re.compile(r"^CHAPTER\s+\d+"),
-        re.compile(r"^Part\s+\d+", re.IGNORECASE),
-        re.compile(r"^PART\s+\d+"),
-        re.compile(r"^\d+\.\s+\S+"),
+        re.compile(r"^\s*Chapter\s+\d+", re.IGNORECASE),
+        re.compile(r"^\s*CHAPTER\s+\d+"),
+        re.compile(r"^\s*Part\s+\d+", re.IGNORECASE),
+        re.compile(r"^\s*PART\s+\d+"),
     ]
 
     def __init__(self, content_processor: ContentProcessor):
@@ -38,7 +38,7 @@ class TOCProcessor:
         found: List[ChapterInfo] = []
 
         for page in pages:
-            for line in page.lines:
+            for line_idx, line in enumerate(page.lines):
                 stripped = line.strip()
                 if not stripped:
                     continue
@@ -50,9 +50,11 @@ class TOCProcessor:
                             title=stripped,
                             chapter_id=chapter_id,
                             page_number=page.page_number,
+                            line_index=line_idx,
                             level=level,
                         )
                     )
+                    break
 
         if not found:
             found = self._split_by_pages(pages)
@@ -67,13 +69,13 @@ class TOCProcessor:
         return False
 
     def _detect_level(self, title: str) -> int:
-        if re.match(r"^第[一二三四五六七八九十百千万零〇\d]+[篇部卷]", title):
+        if re.match(r"^\s*第[一二三四五六七八九十百千万零〇\d]+[篇部卷]\b", title):
             return 1
-        if re.match(r"^第[一二三四五六七八九十百千万零〇\d]+[章节回]", title):
+        if re.match(r"^\s*第[一二三四五六七八九十百千万零〇\d]+[章节回]\b", title):
             return 2
-        if re.match(r"^(Part|PART)\s+\d+", title):
+        if re.match(r"^\s*(Part|PART)\s+\d+", title):
             return 1
-        if re.match(r"^(Chapter|CHAPTER)\s+\d+", title):
+        if re.match(r"^\s*(Chapter|CHAPTER)\s+\d+", title):
             return 2
         return 2
 
@@ -90,6 +92,7 @@ class TOCProcessor:
                     title=title,
                     chapter_id=chapter_id,
                     page_number=i + 1,
+                    line_index=0,
                     level=1,
                 )
             )
@@ -109,14 +112,10 @@ class TOCProcessor:
 
             chapter_pages = pages[start_page_idx:end_page_idx]
 
-            title_pattern = re.escape(info.title)
             full_text_parts = []
             for pi, page in enumerate(chapter_pages):
-                text = page.text
-                if pi == 0:
-                    text = re.sub(title_pattern, "", text, count=1).strip()
-                if text.strip():
-                    full_text_parts.append(text.strip())
+                if page.text.strip():
+                    full_text_parts.append(page.text.strip())
 
             chapter_content = ChapterContent(
                 title=info.title,

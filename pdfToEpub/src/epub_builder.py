@@ -1,9 +1,9 @@
 import os
-from typing import List
+from typing import Dict, List
 
 from ebooklib import epub
 
-from .content_processor import ContentProcessor, ChapterContent
+from .content_processor import ContentProcessor, ChapterContent, ImageContent
 from .toc_processor import TOCProcessor, ChapterInfo
 
 
@@ -21,6 +21,7 @@ class EPUBBuilder:
         self.book_title = book_title
         self.book_author = book_author
         self.language = language
+        self._image_map: Dict[str, ImageContent] = {}
 
     def build(self, output_path: str) -> str:
         book = epub.EpubBook()
@@ -30,6 +31,7 @@ class EPUBBuilder:
         book.add_author(self.book_author)
 
         self._add_styles(book)
+        self._add_images(book)
 
         chapter_contents = self.toc_processor.build_chapter_contents()
         toc_items = self.toc_processor.get_toc_items()
@@ -58,6 +60,19 @@ class EPUBBuilder:
         )
         book.add_item(nav_css)
 
+    def _add_images(self, book: epub.EpubBook) -> None:
+        all_images = self.content_processor.get_all_images()
+        for img in all_images:
+            media_type = f"image/{img.format}"
+            epub_img = epub.EpubItem(
+                uid=img.image_id,
+                file_name=img.file_name,
+                media_type=media_type,
+                content=img.image_data,
+            )
+            book.add_item(epub_img)
+            self._image_map[img.image_id] = img
+
     def _create_chapters(
         self,
         book: epub.EpubBook,
@@ -66,9 +81,7 @@ class EPUBBuilder:
         epub_chapters = []
 
         for content in chapter_contents:
-            html_body = self.content_processor.text_to_html_paragraphs(
-                content.get_full_text()
-            )
+            html_body = self._build_chapter_html_body(content)
             escaped_title = self.content_processor.html_escape(content.title)
             html_content = self._wrap_chapter_html(escaped_title, html_body)
 
@@ -83,6 +96,29 @@ class EPUBBuilder:
             epub_chapters.append(chapter)
 
         return epub_chapters
+
+    def _build_chapter_html_body(self, content: ChapterContent) -> str:
+        html_parts = []
+
+        text = content.get_full_text()
+        if text.strip():
+            text_html = self.content_processor.text_to_html_paragraphs(text)
+            html_parts.append(text_html)
+
+        images = content.get_images()
+        if images:
+            for img in images:
+                img_html = self._build_image_html(img)
+                html_parts.append(img_html)
+
+        return "\n".join(html_parts)
+
+    def _build_image_html(self, img: ImageContent) -> str:
+        escaped_src = self.content_processor.html_escape(img.file_name)
+        escaped_alt = self.content_processor.html_escape(
+            f"Image from page {img.page_number}"
+        )
+        return f'<div class="image-container"><img src="{escaped_src}" alt="{escaped_alt}" class="chapter-image"/></div>'
 
     def _setup_navigation(
         self,
@@ -142,6 +178,17 @@ p {
     text-indent: 2em;
     margin: 0.5em 0;
     text-align: justify;
+}
+.image-container {
+    text-align: center;
+    margin: 1em 0;
+}
+.chapter-image {
+    max-width: 100%;
+    height: auto;
+    display: block;
+    margin: 0 auto;
+    page-break-inside: avoid;
 }
 """
 
