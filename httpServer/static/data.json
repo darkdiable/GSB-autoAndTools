@@ -1,0 +1,23 @@
+{
+    "server": {
+        "name": "简易HTTP服务器",
+        "version": "1.0.0",
+        "status": "running"
+    },
+    "features": [
+        "静态文件服务",
+        "GET请求处理",
+        "多文件类型支持",
+        "命令行参数配置"
+    ],
+    "supported_types": {
+        "text": ["html", "txt", "css", "js", "json"],
+        "image": ["png", "jpg", "jpeg", "gif", "svg"],
+        "other": ["pdf", "zip"]
+    },
+    "test_data": {
+        "message": "JSON文件测试成功！",
+        "timestamp": "2024-01-01",
+        "numbers": [1, 2, 3, 4, 5]
+    }
+}

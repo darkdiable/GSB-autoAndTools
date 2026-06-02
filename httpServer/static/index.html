@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>简易HTTP服务器 - 首页</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+        .container {
+            background: white;
+            border-radius: 16px;
+            padding: 40px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            max-width: 600px;
+            width: 100%;
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 20px;
+            font-size: 28px;
+        }
+        .status {
+            background: #e8f5e9;
+            border-left: 4px solid #4caf50;
+            padding: 15px;
+            margin-bottom: 25px;
+            border-radius: 4px;
+        }
+        .status p {
+            color: #2e7d32;
+            font-weight: 500;
+        }
+        .info {
+            margin-bottom: 25px;
+        }
+        .info-item {
+            display: flex;
+            padding: 12px 0;
+            border-bottom: 1px solid #eee;
+        }
+        .info-item:last-child {
+            border-bottom: none;
+        }
+        .label {
+            width: 120px;
+            font-weight: 600;
+            color: #666;
+        }
+        .value {
+            color: #333;
+            flex: 1;
+        }
+        .links {
+            margin-top: 25px;
+        }
+        .links h3 {
+            color: #333;
+            margin-bottom: 15px;
+            font-size: 16px;
+        }
+        .link-list {
+            list-style: none;
+        }
+        .link-list li {
+            margin-bottom: 10px;
+        }
+        .link-list a {
+            color: #667eea;
+            text-decoration: none;
+            font-weight: 500;
+            transition: color 0.2s;
+        }
+        .link-list a:hover {
+            color: #764ba2;
+            text-decoration: underline;
+        }
+        .footer {
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid #eee;
+            text-align: center;
+            color: #999;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🌐 简易HTTP服务器</h1>
+        
+        <div class="status">
+            <p>✅ 服务器运行正常！</p>
+        </div>
+        
+        <div class="info">
+            <div class="info-item">
+                <span class="label">服务器状态:</span>
+                <span class="value">运行中</span>
+            </div>
+            <div class="info-item">
+                <span class="label">监听端口:</span>
+                <span class="value">8000</span>
+            </div>
+            <div class="info-item">
+                <span class="label">实现方式:</span>
+                <span class="value">Python http.server</span>
+            </div>
+            <div class="info-item">
+                <span class="label">当前时间:</span>
+                <span class="value" id="time"></span>
+            </div>
+        </div>
+        
+        <div class="links">
+            <h3>📁 测试文件链接</h3>
+            <ul class="link-list">
+                <li>📄 <a href="hello.txt">文本文件 (hello.txt)</a></li>
+                <li>📋 <a href="data.json">JSON文件 (data.json)</a></li>
+                <li>🎨 <a href="style.css">CSS文件 (style.css)</a></li>
+            </ul>
+        </div>
+        
+        <div class="footer">
+            <p>基于Python标准库实现的简易HTTP服务器</p>
+        </div>
+    </div>
+    
+    <script>
+        function updateTime() {
+            const now = new Date();
+            document.getElementById('time').textContent = now.toLocaleString('zh-CN');
+        }
+        updateTime();
+        setInterval(updateTime, 1000);
+    </script>
+</body>
+</html>

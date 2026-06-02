@@ -1,0 +1,41 @@
+/* 简易HTTP服务器 - CSS测试文件 */
+
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background-color: #f0f4f8;
+    margin: 0;
+    padding: 20px;
+}
+
+.test-container {
+    max-width: 800px;
+    margin: 0 auto;
+    background: white;
+    padding: 30px;
+    border-radius: 10px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+h1 {
+    color: #2c5282;
+    border-bottom: 3px solid #4299e1;
+    padding-bottom: 10px;
+}
+
+.success {
+    color: #38a169;
+    font-weight: bold;
+    font-size: 18px;
+}
+
+.info-box {
+    background-color: #ebf8ff;
+    border-left: 4px solid #4299e1;
+    padding: 15px;
+    margin: 20px 0;
+}
+
+.info-box p {
+    margin: 5px 0;
+    color: #2b6cb0;
+}
