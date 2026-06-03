@@ -17,12 +17,20 @@ PAGE_STYLE = """
 body {
     margin: 0;
     padding: 0;
+    -webkit-user-select: text;
+    -moz-user-select: text;
+    -ms-user-select: text;
+    user-select: text;
 }
 .page-container {
     margin: 0;
     padding: 0;
     text-align: center;
     page-break-after: always;
+}
+.page-container a {
+    text-decoration: none;
+    display: block;
 }
 .page-container img {
     max-width: 100%;
@@ -32,6 +40,39 @@ body {
     display: block;
     margin: 0 auto;
     object-fit: contain;
+    cursor: pointer;
+}
+"""
+
+PAGE_ZOOM_STYLE = """
+body {
+    margin: 0;
+    padding: 0;
+    background-color: #ffffff;
+    -webkit-user-select: text;
+    -moz-user-select: text;
+    -ms-user-select: text;
+    user-select: text;
+}
+.zoom-container {
+    margin: 0;
+    padding: 0;
+    text-align: center;
+}
+.zoom-container a {
+    text-decoration: none;
+    display: inline-block;
+    color: #666;
+    font-size: 0.9em;
+    margin: 10px 0;
+}
+.zoom-container img {
+    max-width: none;
+    max-height: none;
+    width: auto;
+    height: auto;
+    display: block;
+    margin: 0 auto;
 }
 """
 
@@ -56,7 +97,7 @@ body {
 """
 
 
-def _create_image_chapter(img: ImageInfo, index: int) -> epub.EpubHtml:
+def _create_image_chapter(img: ImageInfo, index: int) -> tuple[epub.EpubHtml, epub.EpubImage]:
     chapter_id = f"page_{index:04d}"
     img_uid = f"img_{index:04d}"
     html_file = f"page_{index:04d}.xhtml"
@@ -79,7 +120,9 @@ def _create_image_chapter(img: ImageInfo, index: int) -> epub.EpubHtml:
 </head>
 <body>
     <div class="page-container">
-        <img src="images/{img.filename}" alt="{img.basename}"/>
+        <a href="zoom_{index:04d}.xhtml">
+            <img src="images/{img.filename}" alt="{img.basename}" title="点击放大"/>
+        </a>
     </div>
 </body>
 </html>"""
@@ -90,9 +133,38 @@ def _create_image_chapter(img: ImageInfo, index: int) -> epub.EpubHtml:
         title=f"Page {index}",
     )
     chapter.content = html_content.encode("utf-8")
-    chapter.add_item(epub_image)
 
     return chapter, epub_image
+
+
+def _create_zoom_chapter(img: ImageInfo, index: int) -> epub.EpubHtml:
+    chapter_id = f"zoom_{index:04d}"
+    html_file = f"zoom_{index:04d}.xhtml"
+
+    html_content = f"""<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">
+<head>
+    <title>Zoom Page {index}</title>
+    <link rel="stylesheet" type="text/css" href="style/zoom.css"/>
+</head>
+<body>
+    <div class="zoom-container">
+        <a href="page_{index:04d}.xhtml">[ 返回页面 {index} ]</a>
+        <img src="images/{img.filename}" alt="{img.basename}"/>
+        <a href="page_{index:04d}.xhtml">[ 返回页面 {index} ]</a>
+    </div>
+</body>
+</html>"""
+
+    chapter = epub.EpubHtml(
+        uid=chapter_id,
+        file_name=html_file,
+        title=f"Zoom Page {index}",
+    )
+    chapter.content = html_content.encode("utf-8")
+
+    return chapter
 
 
 def _create_cover_chapter(cover_img: ImageInfo) -> epub.EpubHtml:
@@ -163,8 +235,15 @@ def build_epub(
         media_type="text/css",
         content=COVER_STYLE.encode("utf-8"),
     )
+    zoom_css = epub.EpubItem(
+        uid="zoom-style",
+        file_name="style/zoom.css",
+        media_type="text/css",
+        content=PAGE_ZOOM_STYLE.encode("utf-8"),
+    )
     book.add_item(page_css)
     book.add_item(cover_css)
+    book.add_item(zoom_css)
 
     spine = []
     toc = []
@@ -186,6 +265,10 @@ def build_epub(
         chapter.add_item(page_css)
         book.add_item(epub_image)
         book.add_item(chapter)
+
+        zoom_chapter = _create_zoom_chapter(img, idx)
+        zoom_chapter.add_item(zoom_css)
+        book.add_item(zoom_chapter)
 
         spine.append(chapter)
         toc.append(chapter)
