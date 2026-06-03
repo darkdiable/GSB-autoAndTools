@@ -166,9 +166,8 @@ def build_epub(
     book.add_item(page_css)
     book.add_item(cover_css)
 
-    spine = ["nav"]
+    spine = []
     toc = []
-    all_items = []
 
     cover_img = get_cover_image(images)
     if cover_img:
@@ -180,7 +179,6 @@ def build_epub(
         book.add_metadata(None, "meta", "", {"name": "cover", "content": cover_epub_image.id})
 
         spine.append(cover_chapter)
-        all_items.append(cover_chapter)
 
     content_images = get_content_images(images)
     for idx, img in enumerate(content_images, start=1):
@@ -191,14 +189,19 @@ def build_epub(
 
         spine.append(chapter)
         toc.append(chapter)
-        all_items.append(chapter)
 
     book.toc = toc
     book.spine = spine
 
-    book.add_metadata(None, "meta", "", {"name": "rendition:layout", "content": "pre-paginated"})
-    book.add_metadata(None, "meta", "", {"name": "rendition:orientation", "content": "auto"})
-    book.add_metadata(None, "meta", "", {"name": "rendition:spread", "content": "auto"})
+    nav = epub.EpubNav()
+    book.add_item(nav)
+
+    ncx = epub.EpubNcx()
+    book.add_item(ncx)
+
+    book.add_metadata("http://www.idpf.org/2007/opf", "meta", "pre-paginated", {"property": "rendition:layout"})
+    book.add_metadata("http://www.idpf.org/2007/opf", "meta", "auto", {"property": "rendition:orientation"})
+    book.add_metadata("http://www.idpf.org/2007/opf", "meta", "auto", {"property": "rendition:spread"})
 
     os.makedirs(config.EPUB_DIR, exist_ok=True)
     output_path = os.path.join(config.EPUB_DIR, output_name)
