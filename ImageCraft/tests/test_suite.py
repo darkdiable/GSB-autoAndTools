@@ -7,13 +7,23 @@ import numpy as np
 import sys
 import os
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# 添加项目根目录到Python路径
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, project_root)
+
+# 使用绝对导入避免与Python标准库io模块冲突
+import importlib.util
+spec = importlib.util.spec_from_file_location("image_io", os.path.join(project_root, "io", "image_io.py"))
+image_io_module = importlib.util.module_from_spec(spec)
+sys.modules["image_io"] = image_io_module
+spec.loader.exec_module(image_io_module)
+ImageLoader = image_io_module.ImageLoader
+ImageSaver = image_io_module.ImageSaver
 
 from core.processor import ImageProcessor
 from core.pipeline import ProcessingPipeline
 from filters import blur, edge_detection, enhance
 from utils import image_utils, color_utils, transform
-from io import image_io
 
 
 def create_test_image(width: int = 256, height: int = 256) -> np.ndarray:

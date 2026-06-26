@@ -269,3 +269,9 @@ def equalize_histogram(image: np.ndarray) -> np.ndarray:
             equalized[:, :, i] = cv2.equalizeHist(image[:, :, i])
     
     return equalized
+
+
+# 模块级别的便捷函数
+def resize_image(image: np.ndarray, scale: float) -> np.ndarray:
+    """缩放图像的便捷函数"""
+    return ImageUtils.resize_image(image, scale)

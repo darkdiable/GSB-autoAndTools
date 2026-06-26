@@ -242,3 +242,19 @@ def posterize(image: np.ndarray, bits: int = 4) -> np.ndarray:
     posterized = (image // step) * step
     
     return posterized
+
+
+# 模块级别的便捷函数
+def rgb_to_grayscale(image: np.ndarray) -> np.ndarray:
+    """RGB 转灰度的便捷函数"""
+    return ColorConverter.rgb_to_grayscale(image)
+
+
+def rgb_to_hsv(image: np.ndarray) -> np.ndarray:
+    """RGB 转 HSV 的便捷函数"""
+    return ColorConverter.rgb_to_hsv(image)
+
+
+def rgb_to_lab(image: np.ndarray) -> np.ndarray:
+    """RGB 转 LAB 的便捷函数"""
+    return ColorConverter.rgb_to_lab(image)
