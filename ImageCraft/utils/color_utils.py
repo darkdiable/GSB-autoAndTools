@@ -242,3 +242,13 @@ def posterize(image: np.ndarray, bits: int = 4) -> np.ndarray:
     posterized = (image // step) * step
     
     return posterized
+
+
+# 模块级别函数别名，方便直接调用
+rgb_to_grayscale = ColorConverter.rgb_to_grayscale
+rgb_to_hsv = ColorConverter.rgb_to_hsv
+hsv_to_rgb = ColorConverter.hsv_to_rgb
+rgb_to_lab = ColorConverter.rgb_to_lab
+lab_to_rgb = ColorConverter.lab_to_rgb
+rgb_to_ycbcr = ColorConverter.rgb_to_ycbcr
+ycbcr_to_rgb = ColorConverter.ycbcr_to_rgb

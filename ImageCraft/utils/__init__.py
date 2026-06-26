@@ -1,13 +1,60 @@
-from .image_utils import ImageUtils, calculate_psnr, calculate_ssim
-from .color_utils import ColorConverter, color_transfer
+from .image_utils import (
+    ImageUtils,
+    calculate_psnr,
+    calculate_ssim,
+    calculate_histogram,
+    equalize_histogram,
+    pad_image,
+    tile_images,
+    split_channels,
+    merge_channels,
+    resize_image,
+    get_image_size,
+    create_blank_image
+)
+from .color_utils import (
+    ColorConverter,
+    color_transfer,
+    rgb_to_grayscale,
+    rgb_to_hsv,
+    rgb_to_lab,
+    hsv_to_rgb,
+    lab_to_rgb,
+    rgb_to_ycbcr,
+    ycbcr_to_rgb,
+    adjust_saturation,
+    adjust_hue,
+    invert_colors,
+    posterize
+)
 from .transform import AffineTransform, PerspectiveTransform
 
 __all__ = [
     'ImageUtils',
     'calculate_psnr',
     'calculate_ssim',
+    'calculate_histogram',
+    'equalize_histogram',
+    'pad_image',
+    'tile_images',
+    'split_channels',
+    'merge_channels',
+    'resize_image',
+    'get_image_size',
+    'create_blank_image',
     'ColorConverter',
     'color_transfer',
+    'rgb_to_grayscale',
+    'rgb_to_hsv',
+    'rgb_to_lab',
+    'hsv_to_rgb',
+    'lab_to_rgb',
+    'rgb_to_ycbcr',
+    'ycbcr_to_rgb',
+    'adjust_saturation',
+    'adjust_hue',
+    'invert_colors',
+    'posterize',
     'AffineTransform',
     'PerspectiveTransform'
 ]
